@@ -1,0 +1,20 @@
+# Binarios
+/proxy
+/bin/
+
+# Entorno
+.env
+
+# Sesiones del proxy
+/.sessions/
+
+# Tooling
+*.test
+*.out
+coverage.txt
+/vendor/
+
+# Editor
+.DS_Store
+.idea/
+.vscode/
