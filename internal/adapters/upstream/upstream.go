@@ -53,20 +53,39 @@ func (c *Client) chatURL() string {
 	return c.baseURL + "/v1/chat/completions"
 }
 
-// jsonFormat habilita el modo JSON del upstream.
-type jsonFormat struct {
-	Type string `json:"type"`
+// jsonSchemaFormat es el formato response_format.type=json_schema del upstream.
+type jsonSchemaFormat struct {
+	Type       string             `json:"type"`
+	JSONSchema *jsonSchemaWrapper `json:"json_schema,omitempty"`
+}
+
+type jsonSchemaWrapper struct {
+	Name   string      `json:"name"`
+	Schema interface{} `json:"schema"`
+	Strict bool        `json:"strict"`
+}
+
+// decompositionSchema es el JSON Schema para la salida de descomposición:
+// {"atomic": boolean, "subtasks": string[]}
+var decompositionSchema = map[string]interface{}{
+	"type": "object",
+	"properties": map[string]interface{}{
+		"atomic":   map[string]string{"type": "boolean"},
+		"subtasks": map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}},
+	},
+	"required":            []string{"atomic", "subtasks"},
+	"additionalProperties": false,
 }
 
 // chatPayload es el cuerpo del POST al upstream. Stream se serializa
 // explícitamente (true/false) para no depender de defaults ajenos.
 type chatPayload struct {
-	Model          string           `json:"model"`
-	Messages       []openai.Message `json:"messages"`
-	Stream         bool             `json:"stream"`
-	ResponseFormat *jsonFormat      `json:"response_format,omitempty"`
-	Tools          []openai.Tool    `json:"tools,omitempty"`
-	ToolChoice     json.RawMessage  `json:"tool_choice,omitempty"`
+	Model            string              `json:"model"`
+	Messages         []openai.Message    `json:"messages"`
+	Stream           bool                `json:"stream"`
+	ResponseFormat   *jsonSchemaFormat   `json:"response_format,omitempty"`
+	Tools            []openai.Tool       `json:"tools,omitempty"`
+	ToolChoice       json.RawMessage     `json:"tool_choice,omitempty"`
 }
 
 // do ejecuta una petición POST y devuelve la respuesta ya verificada (2xx).
@@ -112,7 +131,14 @@ func (c *Client) Complete(ctx context.Context, req ports.CompleteRequest) (strin
 		ToolChoice: req.ToolChoice,
 	}
 	if req.JSONMode {
-		payload.ResponseFormat = &jsonFormat{Type: "json_object"}
+		payload.ResponseFormat = &jsonSchemaFormat{
+			Type: "json_schema",
+			JSONSchema: &jsonSchemaWrapper{
+				Name:   "decomposition",
+				Schema: decompositionSchema,
+				Strict: true,
+			},
+		}
 	}
 
 	resp, err := c.do(ctx, payload)

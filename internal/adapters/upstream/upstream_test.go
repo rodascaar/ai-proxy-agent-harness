@@ -69,8 +69,8 @@ func TestCompleteJSONMode(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Complete() error: %v", err)
 	}
-	if received.ResponseFormat == nil || received.ResponseFormat.Type != "json_object" {
-		t.Errorf("expected response_format json_object, got %#v", received.ResponseFormat)
+	if received.ResponseFormat == nil || received.ResponseFormat.Type != "json_schema" || received.ResponseFormat.JSONSchema == nil || received.ResponseFormat.JSONSchema.Name != "decomposition" {
+		t.Errorf("expected response_format json_schema with name=decomposition, got %#v", received.ResponseFormat)
 	}
 }
 
