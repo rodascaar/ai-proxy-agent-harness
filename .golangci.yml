@@ -1,4 +1,4 @@
-# Configuración de golangci-lint para el port Go de atomic_ai.
+# Configuración de golangci-lint para el proxy de descomposición atómica.
 version: "2"
 
 run:

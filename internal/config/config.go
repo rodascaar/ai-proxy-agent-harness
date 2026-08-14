@@ -226,7 +226,7 @@ func envLogLevel(key, fallback string) (slog.Level, error) {
 }
 
 // upstreamAPIKey prefiere UPSTREAM_API_KEY y cae a DEEPSEEK_API_KEY como
-// conveniencia, replicando la política del proxy original.
+// conveniencia.
 func upstreamAPIKey() string {
 	if value, ok := os.LookupEnv("UPSTREAM_API_KEY"); ok && value != "" {
 		return value

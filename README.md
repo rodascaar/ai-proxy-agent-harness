@@ -4,8 +4,7 @@ Proxy HTTP compatible con la API de OpenAI (`/v1/chat/completions`) que se
 coloca delante de un LLM upstream (OpenAI-compatible: Ollama, LM Studio,
 llama.cpp, vLLM, DeepSeek...) y **descompone cada instrucción en un árbol de
 subtareas atómicas**, las resuelve una por una y luego sintetiza una respuesta
-final. Es el port a Go, con arquitectura hexagonal, del proyecto
-[Nichonauta/atomic_ai](https://github.com/Nichonauta/atomic_ai).
+final.
 
 La idea: modelos más pequeños o más baratos suelen fallar en tareas
 compuestas. Este proxy fuerza un proceso de tres fases —planificar, ejecutar,
@@ -138,4 +137,4 @@ make vet
 make lint     # requiere golangci-lint
 ```
 
-El avance del port se rastrea en [CHECKLIST.md](CHECKLIST.md).
+El avance del proyecto se rastrea en [CHECKLIST.md](CHECKLIST.md).

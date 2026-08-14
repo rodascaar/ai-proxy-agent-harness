@@ -185,7 +185,7 @@ type ToolCallDelta struct {
 
 // ToToolCallDeltas convierte tool calls finales en un único chunk de deltas
 // (sin índice incremental), tal como el proxy los expone en su SSE: el
-// cliente recibe los tool calls completos de una vez, igual que el original.
+// cliente recibe los tool calls completos de una vez.
 func ToToolCallDeltas(toolCalls []ToolCall) []ToolCallDelta {
 	deltas := make([]ToolCallDelta, 0, len(toolCalls))
 	for _, toolCall := range toolCalls {

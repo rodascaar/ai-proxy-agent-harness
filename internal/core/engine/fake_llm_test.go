@@ -22,7 +22,7 @@ type fakeResponse struct {
 }
 
 // recordedRequest es el payload de una llamada al LLM fake, para inspección
-// en los tests (análogo a `received` del FakeUpstream original).
+// en los tests.
 type recordedRequest struct {
 	stream     bool
 	messages   []openai.Message
@@ -31,8 +31,7 @@ type recordedRequest struct {
 	toolChoice json.RawMessage
 }
 
-// fakeLLM implementa ports.LLMClient con una cola de respuestas programadas,
-// como el FakeUpstream del proyecto original.
+// fakeLLM implementa ports.LLMClient con una cola de respuestas programadas.
 type fakeLLM struct {
 	mu       sync.Mutex
 	queue    []fakeResponse

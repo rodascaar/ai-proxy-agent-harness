@@ -8,7 +8,7 @@ import (
 // ChatCompletionRequest es el cuerpo de POST /v1/chat/completions. Los
 // campos no usados por el proxy (temperature, max_tokens, parallel_tool_calls)
 // se aceptan por compatibilidad de protocolo pero no se propagan a las
-// llamadas internas, replicando el comportamiento del proxy original.
+// llamadas internas.
 type ChatCompletionRequest struct {
 	Model             *string         `json:"model,omitempty"`
 	Messages          []Message       `json:"messages"`

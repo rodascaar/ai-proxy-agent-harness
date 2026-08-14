@@ -1,8 +1,7 @@
-# CHECKLIST — Port Go de `atomic_ai` (harness de descomposición atómica)
+# CHECKLIST — Proxy de descomposición atómica
 
-Marco los checks a medida que se completan. Cada ítem de comportamiento
-proviene de los tests del proxy original (Python) o de una mejora de este
-port, salvo que se indique `[mejora]`.
+Marco los checks a medida que se completan. Cada ítem marcado `[mejora]`
+es una mejora de este proxy sobre el comportamiento base.
 
 ## Fase 0 — Fundaciones
 

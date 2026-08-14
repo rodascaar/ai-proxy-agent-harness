@@ -20,8 +20,7 @@ import (
 	"ai-proxy-agent-harness/internal/core/task"
 )
 
-// NewSessionID genera un id de sesión aleatorio de 32 hex (equivalente al
-// uuid4().hex del original).
+// NewSessionID genera un id de sesión aleatorio de 32 hex.
 func NewSessionID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
