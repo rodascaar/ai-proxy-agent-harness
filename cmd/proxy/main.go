@@ -35,7 +35,11 @@ func main() {
 	}
 	client := upstream.New(cfg.UpstreamBaseURL, cfg.UpstreamAPIKey, cfg.RequestTimeout)
 	svc := service.New(client, store, cfg.UpstreamModel, cfg.MaxDecompositionDepth, cfg.MaxToolRoundsPerPhase, logger)
-	handler := httpapi.New(svc, cfg.UpstreamModel, cfg.ExposeReasoningContent, logger)
+	handler := httpapi.New(svc, cfg, logger)
+
+	if cfg.WarmupOnStart {
+		warmup(client, cfg, logger)
+	}
 
 	httpServer := &http.Server{
 		Addr:    cfg.Addr(),
@@ -67,4 +71,17 @@ func main() {
 		}
 	}
 	logger.Info("proxy stopped")
+}
+
+// warmup verifica la conectividad con el upstream antes de servir tráfico,
+// con un timeout acotado. Si falla, solo se loguea un warning: no aborta.
+func warmup(client *upstream.Client, cfg *config.Config, logger *slog.Logger) {
+	logger.Info("warming up upstream", "url", cfg.UpstreamBaseURL, "model", cfg.UpstreamModel)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := client.Probe(ctx); err != nil {
+		logger.Warn("upstream warmup failed", "err", err)
+		return
+	}
+	logger.Info("upstream reachable")
 }

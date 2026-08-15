@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Proxy — Harness</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>AI Proxy <span>harness</span></h1>
+    <div class="status">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">conectando…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="chat" aria-label="Chat">
+      <div class="messages" id="messages"></div>
+      <form class="composer" id="composer">
+        <textarea id="input" rows="1" placeholder="Escribe tu instrucción… (Enter envía, Shift+Enter nueva línea)" autocomplete="off"></textarea>
+        <button type="submit" id="send" aria-label="Enviar">Enviar</button>
+      </form>
+    </section>
+
+    <aside class="config" aria-label="Configuración">
+      <h2>Configuración</h2>
+      <p class="hint">Los cambios se guardan en <code>.env</code> y aplican al reiniciar el proxy.</p>
+      <form id="config-form">
+        <label>URL del upstream
+          <input name="UPSTREAM_BASE_URL" placeholder="http://127.0.0.1:1234/v1" />
+        </label>
+        <label>Modelo
+          <input name="UPSTREAM_MODEL" placeholder="qwen2.5:7b" />
+        </label>
+        <label>API key <span class="set" id="key-badge" hidden>configurada</span>
+          <input name="UPSTREAM_API_KEY" type="password" placeholder="(dejar vacío para conservar)" />
+        </label>
+        <label>Profundidad de descomposición
+          <input name="MAX_DECOMPOSITION_DEPTH" type="number" min="1" max="10" />
+        </label>
+        <label>Rondas de tools por fase
+          <input name="MAX_TOOL_ROUNDS_PER_PHASE" type="number" min="1" />
+        </label>
+        <label>Timeout por request (ej. 120s)
+          <input name="REQUEST_TIMEOUT_SECONDS" placeholder="120s" />
+        </label>
+        <label class="toggle"><input name="EXPOSE_REASONING_CONTENT" type="checkbox" /> Exponer reasoning_content</label>
+        <button type="submit" id="save-config">Guardar configuración</button>
+        <div class="save-note" id="save-note" hidden></div>
+      </form>
+    </aside>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

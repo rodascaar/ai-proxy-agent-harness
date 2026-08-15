@@ -78,6 +78,40 @@ func toolCallMessages(toolCallID, toolResult string) []openai.Message {
 	}
 }
 
+func TestPreparePinsModel(t *testing.T) {
+	llm := fakellm.New().
+		Completion(atomicCompletion()).
+		StreamResponse([]string{"ok"}, nil).
+		StreamResponse([]string{"final"}, nil)
+	svc, _ := newService(t, llm)
+
+	// El cliente pide un modelo distinto; el proxy debe pinearlo a
+	// UPSTREAM_MODEL (default) para no recargar modelos en el upstream.
+	req := requestWith([]openai.Message{{Role: openai.RoleUser, Content: openai.NewTextContent("haz algo")}})
+	req.Model = stringPtr("otro-modelo-distinto")
+
+	run, err := svc.Prepare(req)
+	if err != nil {
+		t.Fatalf("Prepare() error: %v", err)
+	}
+	if run.Model != "test-model" {
+		t.Errorf("run model should be pinned to default, got %q", run.Model)
+	}
+	if err := svc.Consume(context.Background(), run, func(ev engine.Event) error { return nil }); err != nil {
+		t.Fatalf("Consume() error: %v", err)
+	}
+	if err := svc.Persist(run, false, "final"); err != nil {
+		t.Fatalf("Persist() error: %v", err)
+	}
+	run.Release()
+
+	for _, rec := range llm.All() {
+		if rec.Model != "test-model" {
+			t.Errorf("upstream call used model %q, want pinned %q", rec.Model, "test-model")
+		}
+	}
+}
+
 func TestPrepareFreshPath(t *testing.T) {
 	llm := fakellm.New().
 		Completion(atomicCompletion()).

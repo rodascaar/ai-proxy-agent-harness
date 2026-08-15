@@ -37,20 +37,51 @@ type Client struct {
 	http    *http.Client
 }
 
-// New construye el cliente. El http.Client compartido (pooling de conexiones)
-// se crea con el timeout de la configuración. Un apiKey vacío omite el header
-// Authorization.
+// New construye el cliente. El http.Client compartido usa un Transport con
+// keep-alive y pooling de conexiones afinado para reutilizar sockets TCP
+// contra el upstream (el modelo queda cargado en el servidor; aquí solo
+// importa no abrir una conexión nueva por cada fase).
 func New(baseURL, apiKey string, timeout time.Duration) *Client {
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   10,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ForceAttemptHTTP2:     true,
+	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
-		http:    &http.Client{Timeout: timeout},
+		http:    &http.Client{Timeout: timeout, Transport: transport},
 	}
 }
 
 // chatURL devuelve el endpoint de chat completions del upstream.
 func (c *Client) chatURL() string {
 	return c.baseURL + "/v1/chat/completions"
+}
+
+// Probe verifica que el upstream esté disponible consultando GET /v1/models.
+// Se usa como warmup opcional al arrancar (sin disparar una inferencia).
+func (c *Client) Probe(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/models", nil)
+	if err != nil {
+		return fmt.Errorf("building probe request: %w", err)
+	}
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("probing upstream: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("upstream probe status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // jsonSchemaFormat es el formato response_format.type=json_schema del upstream.
@@ -73,19 +104,19 @@ var decompositionSchema = map[string]interface{}{
 		"atomic":   map[string]string{"type": "boolean"},
 		"subtasks": map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}},
 	},
-	"required":            []string{"atomic", "subtasks"},
+	"required":             []string{"atomic", "subtasks"},
 	"additionalProperties": false,
 }
 
 // chatPayload es el cuerpo del POST al upstream. Stream se serializa
 // explícitamente (true/false) para no depender de defaults ajenos.
 type chatPayload struct {
-	Model            string              `json:"model"`
-	Messages         []openai.Message    `json:"messages"`
-	Stream           bool                `json:"stream"`
-	ResponseFormat   *jsonSchemaFormat   `json:"response_format,omitempty"`
-	Tools            []openai.Tool       `json:"tools,omitempty"`
-	ToolChoice       json.RawMessage     `json:"tool_choice,omitempty"`
+	Model          string            `json:"model"`
+	Messages       []openai.Message  `json:"messages"`
+	Stream         bool              `json:"stream"`
+	ResponseFormat *jsonSchemaFormat `json:"response_format,omitempty"`
+	Tools          []openai.Tool     `json:"tools,omitempty"`
+	ToolChoice     json.RawMessage   `json:"tool_choice,omitempty"`
 }
 
 // do ejecuta una petición POST y devuelve la respuesta ya verificada (2xx).

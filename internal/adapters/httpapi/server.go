@@ -17,7 +17,9 @@ import (
 	"time"
 
 	"ai-proxy-agent-harness/internal/adapters/upstream"
+	"ai-proxy-agent-harness/internal/adapters/webui"
 	"ai-proxy-agent-harness/internal/application/service"
+	"ai-proxy-agent-harness/internal/config"
 	"ai-proxy-agent-harness/internal/core/engine"
 	"ai-proxy-agent-harness/internal/core/openai"
 	"ai-proxy-agent-harness/internal/core/session"
@@ -40,24 +42,30 @@ type Server struct {
 	service         *service.Service
 	defaultModel    string
 	exposeReasoning bool
+	cfg             *config.Config
 	logger          *slog.Logger
 }
 
-// New construye el handler HTTP con sus rutas.
-func New(svc *service.Service, defaultModel string, exposeReasoning bool, logger *slog.Logger) http.Handler {
+// New construye el handler HTTP con sus rutas: la Web UI en la raíz, la API
+// compatible con OpenAI en /v1/* y la configuración en /api/config.
+func New(svc *service.Service, cfg *config.Config, logger *slog.Logger) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	s := &Server{
 		service:         svc,
-		defaultModel:    defaultModel,
-		exposeReasoning: exposeReasoning,
+		defaultModel:    cfg.UpstreamModel,
+		exposeReasoning: cfg.ExposeReasoningContent,
+		cfg:             cfg,
 		logger:          logger,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
 	mux.HandleFunc("GET /v1/models", s.models)
 	mux.HandleFunc("POST /v1/chat/completions", s.chatCompletions)
+	mux.HandleFunc("GET /api/config", s.getConfig)
+	mux.HandleFunc("PUT /api/config", s.putConfig)
+	mux.Handle("/", webui.Handler())
 	return s.requestID(s.recovery(mux))
 }
 

@@ -16,6 +16,7 @@ import (
 	"ai-proxy-agent-harness/internal/adapters/sessionstore/md"
 	"ai-proxy-agent-harness/internal/adapters/upstream"
 	"ai-proxy-agent-harness/internal/application/service"
+	"ai-proxy-agent-harness/internal/config"
 	"ai-proxy-agent-harness/internal/core/openai"
 	"ai-proxy-agent-harness/internal/testutil/fakellm"
 )
@@ -31,7 +32,19 @@ func newTestServer(t *testing.T, llm *fakellm.Fake, exposeReasoning bool) (http.
 		t.Fatalf("md.New() error: %v", err)
 	}
 	svc := service.New(llm, store, "test-model", 3, 25, noopLogger())
-	return httpapi.New(svc, "test-model", exposeReasoning, noopLogger()), store
+	cfg := &config.Config{
+		UpstreamBaseURL:        "http://localhost:11434/v1",
+		UpstreamModel:          "test-model",
+		MaxDecompositionDepth:  3,
+		MaxToolRoundsPerPhase:  25,
+		ProxyPort:              8000,
+		RequestTimeout:         time.Minute,
+		SessionTTL:             time.Minute,
+		MaxSessions:            100,
+		ExposeReasoningContent: exposeReasoning,
+		SessionsDir:            ".sessions",
+	}
+	return httpapi.New(svc, cfg, noopLogger()), store
 }
 
 func doJSON(t *testing.T, handler http.Handler, method, path string, body string) *httptest.ResponseRecorder {

@@ -73,6 +73,8 @@ El proxy queda disponible en `http://127.0.0.1:8000`, exponiendo:
 - `POST /v1/chat/completions` — endpoint principal (compatible OpenAI)
 - `GET /v1/models` — lista el modelo configurado
 - `GET /healthz` — healthcheck
+- `/` — Web UI embebida (chat + configuración)
+- `GET/PUT /api/config` — ver y editar la configuración (se guarda en `.env`)
 
 Apunta cualquier cliente compatible (SDK oficial, agentes de código, etc.) a
 esta URL como `base_url`. Ejemplo con el SDK de OpenAI apuntando a Ollama:
@@ -83,6 +85,25 @@ from openai import OpenAI
 client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="sk-local")
 ```
 
+## Interfaz web
+
+Abre `http://127.0.0.1:8000/` para probar el proxy sin depender de un cliente
+externo: un chat (con streaming y el `reasoning_content` colapsable) y un panel
+de configuración. La UI está **embebida en el propio binario** (HTML/JS/CSS
+vanilla vía `go:embed`): no agrega dependencias ni proceso adicional, y ocupa
+pocos KB.
+
+El panel de configuración lee/escribe `.env`; los cambios **aplican al
+reiniciar el proxy**.
+
+## Modelo del upstream (pinning)
+
+El proxy fija (`pinea`) todas sus llamadas internas al modelo `UPSTREAM_MODEL`,
+**ignorando el campo `model` del request** (que se acepta solo por
+compatibilidad de wire). Así, un cliente que mande un nombre distinto no hace
+que LM Studio / Ollama / llama.cpp carguen un modelo nuevo: se reutiliza el que
+ya está en memoria, sin recargas ni consumo extra.
+
 ## Configuración
 
 Todas las variables se leen del entorno (con soporte de `.env`). Se documentan
@@ -90,9 +111,9 @@ completas en [`.env.example`](.env.example):
 
 | Variable | Default | Descripción |
 | --- | --- | --- |
-| `UPSTREAM_BASE_URL` | `https://api.deepseek.com` | Base del upstream OpenAI-compatible (ej. Ollama: `http://127.0.0.1:11434/v1`) |
-| `UPSTREAM_API_KEY` | `""` | API key del upstream (omitida si vacía). Cae a `DEEPSEEK_API_KEY` |
-| `UPSTREAM_MODEL` | `deepseek-v4-flash` | Modelo por defecto |
+| `UPSTREAM_BASE_URL` | *(requerido)* | Base del upstream OpenAI-compatible (ej. Ollama: `http://127.0.0.1:11434/v1`, LM Studio: `http://127.0.0.1:1234/v1`, llama.cpp: `http://127.0.0.1:8080/v1`) |
+| `UPSTREAM_API_KEY` | `""` | API key del upstream (omitida si vacía) |
+| `UPSTREAM_MODEL` | *(requerido)* | Modelo del upstream (pineado para todas las fases) |
 | `MAX_DECOMPOSITION_DEPTH` | `3` | Profundidad máxima de descomposición |
 | `MAX_TOOL_ROUNDS_PER_PHASE` | `25` | Rondas de tools por fase (agotadas → responde texto) |
 | `REQUEST_TIMEOUT_SECONDS` | `120s` | Timeout por request al upstream |
@@ -100,6 +121,7 @@ completas en [`.env.example`](.env.example):
 | `MAX_SESSIONS` | `200` | Límite de sesiones simultáneas |
 | `SESSIONS_DIR` | `.sessions` | Directorio de notas de sesión (markdown) |
 | `EXPOSE_REASONING_CONTENT` | `true` | Expone el razonamiento como `reasoning_content` |
+| `WARMUP_ON_START` | `false` | Verifica el upstream (`/v1/models`) al arrancar |
 | `PROXY_HOST` / `PROXY_PORT` | `127.0.0.1` / `8000` | Interfaz y puerto del proxy |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` o `error` |
 

@@ -20,14 +20,6 @@ type ChatCompletionRequest struct {
 	ParallelToolCalls *bool           `json:"parallel_tool_calls,omitempty"`
 }
 
-// ResolvedModel devuelve el modelo del request o el fallback si viene vacío.
-func (r *ChatCompletionRequest) ResolvedModel(fallback string) string {
-	if r.Model != nil && *r.Model != "" {
-		return *r.Model
-	}
-	return fallback
-}
-
 // ResponseMessage es el mensaje de la respuesta final (no streaming).
 type ResponseMessage struct {
 	Role             Role       `json:"role"`

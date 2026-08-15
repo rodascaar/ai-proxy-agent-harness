@@ -84,3 +84,16 @@ es una mejora de este proxy sobre el comportamiento base.
 - [x] Tests con `-race` (Makefile)
 - [x] README completo (configuración, endpoints, ejemplos con Ollama)
 - [x] Pasada final del checklist y resumen de sesión
+
+## Fase 5 — Web UI + pinning de modelo
+
+- [x] `config`: defaults neutrales (upstream requerido, sin marca DeepSeek)
+- [x] `config`: `Values()`, `ValidateValues()`/`ValidateOverride()`, `WriteEnvFile()`
+- [x] `service`: pinning del modelo a `UPSTREAM_MODEL` (fresh + resume, ignora el `model` del request)
+- [x] `upstream`: `http.Transport` con keep-alive/pooling afinado + `Probe()`
+- [x] `adapters/webui`: UI embebida con `go:embed` (index.html, app.js, style.css vanilla)
+- [x] `httpapi`: ruta `/` (Web UI), `GET/PUT /api/config` (API key enmascarada)
+- [x] `cmd/proxy`: warmup opcional (`WARMUP_ON_START`)
+- [x] Docs: `.env.example`, `README.md` (Web UI, pinning, tabla de config)
+- [x] Tests de config (pinning, override, env file), httpapi (config + UI) con `-race`
+

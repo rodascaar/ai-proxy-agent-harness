@@ -25,6 +25,7 @@ type response struct {
 // RecordedRequest es el payload de una llamada al fake, para inspección en
 // los tests.
 type RecordedRequest struct {
+	Model      string
 	Stream     bool
 	Messages   []openai.Message
 	JSONMode   bool
@@ -73,6 +74,7 @@ func (f *Fake) Error(err error) *Fake {
 func (f *Fake) Complete(ctx context.Context, req ports.CompleteRequest) (string, error) {
 	f.mu.Lock()
 	f.record(RecordedRequest{
+		Model:      req.Model,
 		Messages:   req.Messages,
 		JSONMode:   req.JSONMode,
 		Tools:      req.Tools,
@@ -96,6 +98,7 @@ func (f *Fake) Complete(ctx context.Context, req ports.CompleteRequest) (string,
 func (f *Fake) Stream(ctx context.Context, req ports.StreamRequest, onChunk func(ports.StreamChunk) error) error {
 	f.mu.Lock()
 	f.record(RecordedRequest{
+		Model:      req.Model,
 		Stream:     true,
 		Messages:   req.Messages,
 		Tools:      req.Tools,
