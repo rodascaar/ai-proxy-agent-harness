@@ -1,11 +1,18 @@
 package httpapi_test
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"ai-proxy-agent-harness/internal/adapters/httpapi"
+	"ai-proxy-agent-harness/internal/adapters/sessionstore/md"
+	"ai-proxy-agent-harness/internal/application/service"
+	"ai-proxy-agent-harness/internal/config"
+	"ai-proxy-agent-harness/internal/core/openai"
 	"ai-proxy-agent-harness/internal/testutil/fakellm"
 )
 
@@ -84,5 +91,72 @@ func TestWebUIServedAtRoot(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "AI Proxy") {
 		t.Errorf("expected index.html body, got %q", rec.Body.String())
+	}
+}
+
+// fakeLister implementa ports.ModelLister para tests.
+type fakeLister struct {
+	models []openai.ModelDescriptor
+	err    error
+	calls  int
+}
+
+func (f *fakeLister) ListModels(ctx context.Context) ([]openai.ModelDescriptor, error) {
+	f.calls++
+	return f.models, f.err
+}
+
+func TestModelsPassthrough(t *testing.T) {
+	llm := fakellm.New().
+		Completion(`{"atomic": true, "subtasks": []}`).
+		StreamResponse([]string{"final"}, nil)
+	store, err := md.New(t.TempDir(), time.Minute, 100, noopLogger())
+	if err != nil {
+		t.Fatalf("md.New() error: %v", err)
+	}
+	svc := service.New(llm, store, "test-model", 3, 25, noopLogger())
+	cfg := &config.Config{
+		UpstreamBaseURL: "http://localhost:11434/v1",
+		UpstreamModel:   "test-model",
+		RequestTimeout:  time.Minute,
+		SessionsDir:     ".sessions",
+	}
+	lister := &fakeLister{models: []openai.ModelDescriptor{
+		{ID: "qwen2.5:7b", Object: openai.ObjectModel, OwnedBy: "ollama"},
+		{ID: "mistral", Object: openai.ObjectModel, OwnedBy: "ollama"},
+	}}
+	handler := httpapi.New(svc, cfg, lister, noopLogger())
+
+	rec := doJSON(t, handler, http.MethodGet, "/v1/models", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeResponse[struct {
+		Data []openai.ModelDescriptor `json:"data"`
+	}](t, rec)
+	ids := map[string]bool{}
+	for _, m := range payload.Data {
+		ids[m.ID] = true
+	}
+	if len(payload.Data) != 3 {
+		t.Errorf("expected 2 upstream + 1 default = 3 models, got %d", len(payload.Data))
+	}
+	if !ids["qwen2.5:7b"] || !ids["mistral"] {
+		t.Errorf("expected upstream models in list, got %v", ids)
+	}
+	if !ids["test-model"] {
+		t.Errorf("expected default model present, got %v", ids)
+	}
+	if lister.calls != 1 {
+		t.Errorf("expected one upstream call (cached on repeat), got %d", lister.calls)
+	}
+
+	// Segunda llamada: cache (no vuelve a consultar al upstream).
+	rec2 := doJSON(t, handler, http.MethodGet, "/v1/models", "")
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("expected 200 on cached call, got %d", rec2.Code)
+	}
+	if lister.calls != 1 {
+		t.Errorf("cached call should not query upstream again, calls=%d", lister.calls)
 	}
 }

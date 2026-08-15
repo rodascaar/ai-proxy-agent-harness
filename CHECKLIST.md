@@ -85,15 +85,18 @@ es una mejora de este proxy sobre el comportamiento base.
 - [x] README completo (configuración, endpoints, ejemplos con Ollama)
 - [x] Pasada final del checklist y resumen de sesión
 
-## Fase 5 — Web UI + pinning de modelo
+## Fase 5 — Web UI + detección dinámica de modelos
 
 - [x] `config`: defaults neutrales (upstream requerido, sin marca DeepSeek)
 - [x] `config`: `Values()`, `ValidateValues()`/`ValidateOverride()`, `WriteEnvFile()`
-- [x] `service`: pinning del modelo a `UPSTREAM_MODEL` (fresh + resume, ignora el `model` del request)
-- [x] `upstream`: `http.Transport` con keep-alive/pooling afinado + `Probe()`
+- [x] `service`: reenvío del `model` del request con fallback a `UPSTREAM_MODEL` (fresh + resume)
+- [x] `ports`: `ModelLister` (opcional) para consultar `GET /v1/models` del upstream
+- [x] `upstream`: `ListModels()` + `Probe()` (implementan `ModelLister` / healthcheck)
+- [x] `httpapi`: `GET /v1/models` (passthrough + *cache* + modelo por defecto); `Server.New(svc, cfg, lister, logger)`
+- [x] `cmd/proxy`: pasa el cliente upstream como `ModelLister` al `httpapi.New`
 - [x] `adapters/webui`: UI embebida con `go:embed` (index.html, app.js, style.css vanilla)
 - [x] `httpapi`: ruta `/` (Web UI), `GET/PUT /api/config` (API key enmascarada)
 - [x] `cmd/proxy`: warmup opcional (`WARMUP_ON_START`)
-- [x] Docs: `.env.example`, `README.md` (Web UI, pinning, tabla de config)
-- [x] Tests de config (pinning, override, env file), httpapi (config + UI) con `-race`
+- [x] Docs: `.env.example`, `README.md` (Web UI, detección dinámica, tabla de config)
+- [x] Tests: config, service (reenvío+fallback), upstream (ListModels/Probe), httpapi (config, UI, /v1/models) con `-race`
 

@@ -83,10 +83,10 @@ func (r *PreparedRun) Release() {
 // doble ejecución cuando dos requests idénticas llegan en paralelo.
 func (s *Service) Prepare(req *openai.ChatCompletionRequest) (*PreparedRun, error) {
 	messages := req.Messages
-	// El modelo del upstream está pineado a UPSTREAM_MODEL: el campo model del
-	// request se acepta por compatibilidad de wire pero se ignora, para que el
-	// upstream (LM Studio, Ollama, llama.cpp...) reutilice el modelo ya cargado
-	// en memoria en vez de cargar uno nuevo por cada petición.
+	// El modelo se resuelve del request con fallback a UPSTREAM_MODEL y se
+	// reenvía de forma consistente en todas las fases de un mismo run. GET
+	// /v1/models detecta los modelos disponibles del upstream para que el
+	// cliente elija uno real y el servidor reutilice el modelo ya cargado.
 
 	for {
 		state, err := s.store.FindMatching(context.Background(), messages)
@@ -94,7 +94,7 @@ func (s *Service) Prepare(req *openai.ChatCompletionRequest) (*PreparedRun, erro
 			return nil, fmt.Errorf("finding session: %w", err)
 		}
 		if state == nil || !session.IsValidResume(state, messages) {
-			return s.prepareFreshOrNewTurn(req, messages, state)
+			return s.prepareFreshOrNewTurn(req, messages, req.ResolvedModel(s.defaultModel), state)
 		}
 
 		lock := s.store.Lock(state.SessionID)
@@ -172,7 +172,7 @@ func (s *Service) Persist(run *PreparedRun, paused bool, finalContent string) er
 func (s *Service) buildResumeRun(state *session.State, messages []openai.Message, lock *sync.Mutex) *PreparedRun {
 	goalCtx := state.GoalCtx
 	eng := engine.New(s.client, engine.Options{
-		Model:                 s.defaultModel,
+		Model:                 state.Model,
 		Tools:                 state.Tools,
 		ToolChoice:            state.ToolChoice,
 		MaxDecompositionDepth: s.maxDecompositionDepth,
@@ -186,7 +186,7 @@ func (s *Service) buildResumeRun(state *session.State, messages []openai.Message
 		Engine:         eng,
 		SessionID:      state.SessionID,
 		GoalCtx:        &goalCtx,
-		Model:          s.defaultModel,
+		Model:          state.Model,
 		Tools:          state.Tools,
 		ToolChoice:     state.ToolChoice,
 		Messages:       messages,
@@ -198,8 +198,9 @@ func (s *Service) buildResumeRun(state *session.State, messages []openai.Message
 
 // prepareFreshOrNewTurn construye un run nuevo (fresco o turno nuevo sembrado
 // con turn_history) cuando no hay resume válido. state puede ser nil (sin
-// sesión) o una sesión ya completada.
-func (s *Service) prepareFreshOrNewTurn(req *openai.ChatCompletionRequest, messages []openai.Message, state *session.State) (*PreparedRun, error) {
+// sesión) o una sesión ya completada. requestedModel es el modelo resuelto del
+// request para usarlo en toda la fase de ejecución.
+func (s *Service) prepareFreshOrNewTurn(req *openai.ChatCompletionRequest, messages []openai.Message, requestedModel string, state *session.State) (*PreparedRun, error) {
 	var priorContextOverride *string
 	var turnHistory []string
 	if state != nil && session.IsNewTurn(state, messages) {
@@ -210,7 +211,7 @@ func (s *Service) prepareFreshOrNewTurn(req *openai.ChatCompletionRequest, messa
 
 	goalCtx := goal.Extract(req.Messages, priorContextOverride)
 	eng := engine.New(s.client, engine.Options{
-		Model:                 s.defaultModel,
+		Model:                 requestedModel,
 		Tools:                 req.Tools,
 		ToolChoice:            req.ToolChoice,
 		MaxDecompositionDepth: s.maxDecompositionDepth,
@@ -222,7 +223,7 @@ func (s *Service) prepareFreshOrNewTurn(req *openai.ChatCompletionRequest, messa
 		Engine:      eng,
 		SessionID:   session.NewSessionID(),
 		GoalCtx:     &goalCtx,
-		Model:       s.defaultModel,
+		Model:       requestedModel,
 		Tools:       req.Tools,
 		ToolChoice:  req.ToolChoice,
 		Messages:    messages,

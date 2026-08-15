@@ -20,6 +20,17 @@ type ChatCompletionRequest struct {
 	ParallelToolCalls *bool           `json:"parallel_tool_calls,omitempty"`
 }
 
+// ResolvedModel devuelve el modelo del request o el fallback si viene vacío.
+// El proxy reenvía este nombre tal cual al upstream: no pinea un modelo fijo,
+// de modo que el cliente elija entre los expuestos por el upstream (ver
+// GET /v1/models) y el servidor reutilice el modelo ya cargado.
+func (r *ChatCompletionRequest) ResolvedModel(fallback string) string {
+	if r.Model != nil && *r.Model != "" {
+		return *r.Model
+	}
+	return fallback
+}
+
 // ResponseMessage es el mensaje de la respuesta final (no streaming).
 type ResponseMessage struct {
 	Role             Role       `json:"role"`

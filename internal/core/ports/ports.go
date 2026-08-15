@@ -45,3 +45,12 @@ type LLMClient interface {
 	// y debe respetar la cancelación del contexto.
 	Stream(ctx context.Context, req StreamRequest, onChunk func(StreamChunk) error) error
 }
+
+// ModelLister es el puerto opcional para consultar los modelos que expone el
+// upstream via GET /v1/models. Sirve a la UI para que el cliente elija un
+// modelo que realmente exista en el upstream (y así reutilizar el modelo ya
+// cargado en vez de disparar una recarga).
+type ModelLister interface {
+	// ListModels devuelve los modelos que el upstream anuncia, en orden.
+	ListModels(ctx context.Context) ([]openai.ModelDescriptor, error)
+}

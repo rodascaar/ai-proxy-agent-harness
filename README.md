@@ -96,13 +96,21 @@ pocos KB.
 El panel de configuración lee/escribe `.env`; los cambios **aplican al
 reiniciar el proxy**.
 
-## Modelo del upstream (pinning)
+## Modelo del upstream (detección dinámica)
 
-El proxy fija (`pinea`) todas sus llamadas internas al modelo `UPSTREAM_MODEL`,
-**ignorando el campo `model` del request** (que se acepta solo por
-compatibilidad de wire). Así, un cliente que mande un nombre distinto no hace
-que LM Studio / Ollama / llama.cpp carguen un modelo nuevo: se reutiliza el que
-ya está en memoria, sin recargas ni consumo extra.
+El proxy **reenvía el `model` del request** a todas las llamadas internas al
+upstream, con *fallback* a `UPSTREAM_MODEL`. Así el cliente puede elegir entre
+los modelos que el upstream expone (por ejemplo `qwen2.5:7b`, `mistral`, etc.)
+y el servidor reutiliza el nombre en cada fase del run.
+
+`GET /v1/models` consulta la lista del upstream vía `GET /v1/models` (con
+*caching* en memoria) y la mezcla con el modelo por defecto, por lo que la UI
+puede desplegar exactamente los modelos disponibles en ese momento. Si el
+upstream no responde, el proxy responde con el modelo por defecto para que la UI
+nunca quede vacía.
+
+Esto evita disparar recargas de modelo: el cliente elige uno que ya está
+servido y el proxy lo reutiliza de forma consistente durante todo el run.
 
 ## Configuración
 
@@ -113,7 +121,7 @@ completas en [`.env.example`](.env.example):
 | --- | --- | --- |
 | `UPSTREAM_BASE_URL` | *(requerido)* | Base del upstream OpenAI-compatible (ej. Ollama: `http://127.0.0.1:11434/v1`, LM Studio: `http://127.0.0.1:1234/v1`, llama.cpp: `http://127.0.0.1:8080/v1`) |
 | `UPSTREAM_API_KEY` | `""` | API key del upstream (omitida si vacía) |
-| `UPSTREAM_MODEL` | *(requerido)* | Modelo del upstream (pineado para todas las fases) |
+| `UPSTREAM_MODEL` | *(requerido)* | Modelo por defecto del upstream (reenviado a menos que el request envíe `model`; también se anuncia en `GET /v1/models`) |
 | `MAX_DECOMPOSITION_DEPTH` | `3` | Profundidad máxima de descomposición |
 | `MAX_TOOL_ROUNDS_PER_PHASE` | `25` | Rondas de tools por fase (agotadas → responde texto) |
 | `REQUEST_TIMEOUT_SECONDS` | `120s` | Timeout por request al upstream |

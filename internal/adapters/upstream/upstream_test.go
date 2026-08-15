@@ -302,3 +302,69 @@ func TestStreamRespectsContextCancellation(t *testing.T) {
 		t.Fatalf("Stream() did not return after context cancellation")
 	}
 }
+
+func TestListModelsParsesUpstreamList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer sk-test" {
+			t.Errorf("expected Authorization header, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"object":"list","data":[{"id":"qwen2.5:7b","object":"model","owned_by":"ollama"}]}`)
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "sk-test", 5*time.Second)
+	models, err := client.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels() error: %v", err)
+	}
+	if len(models) != 1 || models[0].ID != "qwen2.5:7b" || models[0].OwnedBy != "ollama" {
+		t.Errorf("unexpected models: %#v", models)
+	}
+}
+
+func TestListModelsPropagatesError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, `{"error":"no upstream"}`)
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "", 5*time.Second)
+	_, err := client.ListModels(context.Background())
+	var upErr *Error
+	if !errors.As(err, &upErr) {
+		t.Fatalf("expected *upstream.Error, got %T: %v", err, err)
+	}
+	if upErr.Status != http.StatusBadGateway {
+		t.Errorf("expected status 502, got %d", upErr.Status)
+	}
+}
+
+func TestProbeReachable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"object":"list","data":[]}`)
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "", 5*time.Second)
+	if err := client.Probe(context.Background()); err != nil {
+		t.Fatalf("Probe() error: %v", err)
+	}
+}
+
+func TestProbeUnreachable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "", 5*time.Second)
+	if err := client.Probe(context.Background()); err == nil {
+		t.Fatalf("expected error when upstream unavailable")
+	}
+}

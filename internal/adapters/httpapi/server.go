@@ -22,6 +22,7 @@ import (
 	"ai-proxy-agent-harness/internal/config"
 	"ai-proxy-agent-harness/internal/core/engine"
 	"ai-proxy-agent-harness/internal/core/openai"
+	"ai-proxy-agent-harness/internal/core/ports"
 	"ai-proxy-agent-harness/internal/core/session"
 )
 
@@ -43,12 +44,15 @@ type Server struct {
 	defaultModel    string
 	exposeReasoning bool
 	cfg             *config.Config
+	modelCache      *modelCache
 	logger          *slog.Logger
 }
 
 // New construye el handler HTTP con sus rutas: la Web UI en la raíz, la API
 // compatible con OpenAI en /v1/* y la configuración en /api/config.
-func New(svc *service.Service, cfg *config.Config, logger *slog.Logger) http.Handler {
+// lister (opcional) detecta los modelos disponibles del upstream para GET
+// /v1/models; si es nil, se expone solo el modelo por defecto.
+func New(svc *service.Service, cfg *config.Config, lister ports.ModelLister, logger *slog.Logger) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -57,6 +61,7 @@ func New(svc *service.Service, cfg *config.Config, logger *slog.Logger) http.Han
 		defaultModel:    cfg.UpstreamModel,
 		exposeReasoning: cfg.ExposeReasoningContent,
 		cfg:             cfg,
+		modelCache:      newModelCache(lister),
 		logger:          logger,
 	}
 	mux := http.NewServeMux()
@@ -102,17 +107,6 @@ func newRequestID() string {
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-func (s *Server) models(w http.ResponseWriter, r *http.Request) {
-	s.writeJSON(w, http.StatusOK, map[string]any{
-		"object": openai.ObjectList,
-		"data": []openai.ModelDescriptor{{
-			ID:      s.defaultModel,
-			Object:  openai.ObjectModel,
-			OwnedBy: "atomic-proxy",
-		}},
-	})
 }
 
 func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {

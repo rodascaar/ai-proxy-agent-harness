@@ -44,7 +44,7 @@ func newTestServer(t *testing.T, llm *fakellm.Fake, exposeReasoning bool) (http.
 		ExposeReasoningContent: exposeReasoning,
 		SessionsDir:            ".sessions",
 	}
-	return httpapi.New(svc, cfg, noopLogger()), store
+	return httpapi.New(svc, cfg, nil, noopLogger()), store
 }
 
 func doJSON(t *testing.T, handler http.Handler, method, path string, body string) *httptest.ResponseRecorder {

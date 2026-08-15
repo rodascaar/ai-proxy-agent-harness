@@ -84,6 +84,52 @@ func (c *Client) Probe(ctx context.Context) error {
 	return nil
 }
 
+// ListModels implementa ports.ModelLister: consulta GET /v1/models del
+// upstream y devuelve los descriptores que anuncia. Se usa para poblar la UI
+// con los modelos realmente disponibles (así el cliente no pide uno inexistente,
+// lo que haría al upstream cargar/recargar un modelo de más).
+func (c *Client) ListModels(ctx context.Context) ([]openai.ModelDescriptor, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("building list request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	resp, err := c.doList(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var list struct {
+		Data []openai.ModelDescriptor `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&list); err != nil {
+		return nil, fmt.Errorf("decoding upstream models: %w", err)
+	}
+	return list.Data, nil
+}
+
+// doList ejecuta la petición GET al listado de modelos; reusa el manejador de
+// errores tipado (*Error) del cliente.
+func (c *Client) doList(ctx context.Context, req *http.Request) (*http.Response, error) {
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		defer func() { _ = resp.Body.Close() }()
+		raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if readErr != nil {
+			return nil, &Error{Status: resp.StatusCode, Body: readErr.Error()}
+		}
+		return nil, &Error{Status: resp.StatusCode, Body: string(raw)}
+	}
+	return resp, nil
+}
+
 // jsonSchemaFormat es el formato response_format.type=json_schema del upstream.
 type jsonSchemaFormat struct {
 	Type       string             `json:"type"`

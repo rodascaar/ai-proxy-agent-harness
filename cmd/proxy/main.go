@@ -35,7 +35,7 @@ func main() {
 	}
 	client := upstream.New(cfg.UpstreamBaseURL, cfg.UpstreamAPIKey, cfg.RequestTimeout)
 	svc := service.New(client, store, cfg.UpstreamModel, cfg.MaxDecompositionDepth, cfg.MaxToolRoundsPerPhase, logger)
-	handler := httpapi.New(svc, cfg, logger)
+	handler := httpapi.New(svc, cfg, client, logger)
 
 	if cfg.WarmupOnStart {
 		warmup(client, cfg, logger)

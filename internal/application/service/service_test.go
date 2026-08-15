@@ -78,24 +78,55 @@ func toolCallMessages(toolCallID, toolResult string) []openai.Message {
 	}
 }
 
-func TestPreparePinsModel(t *testing.T) {
+func TestPrepareForwardsClientModel(t *testing.T) {
 	llm := fakellm.New().
 		Completion(atomicCompletion()).
 		StreamResponse([]string{"ok"}, nil).
 		StreamResponse([]string{"final"}, nil)
 	svc, _ := newService(t, llm)
 
-	// El cliente pide un modelo distinto; el proxy debe pinearlo a
-	// UPSTREAM_MODEL (default) para no recargar modelos en el upstream.
+	// El cliente elige un modelo distinto del default; el proxy lo reenvía
+	// tal cual al upstream de forma consistente en todas las fases.
 	req := requestWith([]openai.Message{{Role: openai.RoleUser, Content: openai.NewTextContent("haz algo")}})
-	req.Model = stringPtr("otro-modelo-distinto")
+	req.Model = stringPtr("cliente-modelo-x")
 
 	run, err := svc.Prepare(req)
 	if err != nil {
 		t.Fatalf("Prepare() error: %v", err)
 	}
+	if run.Model != "cliente-modelo-x" {
+		t.Errorf("run model should forward the client's model, got %q", run.Model)
+	}
+	if err := svc.Consume(context.Background(), run, func(ev engine.Event) error { return nil }); err != nil {
+		t.Fatalf("Consume() error: %v", err)
+	}
+	if err := svc.Persist(run, false, "final"); err != nil {
+		t.Fatalf("Persist() error: %v", err)
+	}
+	run.Release()
+
+	for _, rec := range llm.All() {
+		if rec.Model != "cliente-modelo-x" {
+			t.Errorf("upstream call used model %q, want %q", rec.Model, "cliente-modelo-x")
+		}
+	}
+}
+
+func TestPrepareFallsBackToDefaultModel(t *testing.T) {
+	llm := fakellm.New().
+		Completion(atomicCompletion()).
+		StreamResponse([]string{"ok"}, nil).
+		StreamResponse([]string{"final"}, nil)
+	svc, _ := newService(t, llm)
+
+	// Sin campo model en el request, se usa UPSTREAM_MODEL (default).
+	req := requestWith([]openai.Message{{Role: openai.RoleUser, Content: openai.NewTextContent("haz algo")}})
+	run, err := svc.Prepare(req)
+	if err != nil {
+		t.Fatalf("Prepare() error: %v", err)
+	}
 	if run.Model != "test-model" {
-		t.Errorf("run model should be pinned to default, got %q", run.Model)
+		t.Errorf("expected default model, got %q", run.Model)
 	}
 	if err := svc.Consume(context.Background(), run, func(ev engine.Event) error { return nil }); err != nil {
 		t.Fatalf("Consume() error: %v", err)
@@ -107,7 +138,7 @@ func TestPreparePinsModel(t *testing.T) {
 
 	for _, rec := range llm.All() {
 		if rec.Model != "test-model" {
-			t.Errorf("upstream call used model %q, want pinned %q", rec.Model, "test-model")
+			t.Errorf("upstream call used model %q, want default %q", rec.Model, "test-model")
 		}
 	}
 }
