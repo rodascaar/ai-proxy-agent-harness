@@ -2,9 +2,9 @@
 
 Proxy HTTP compatible con la API de OpenAI (`/v1/chat/completions`) que se
 coloca delante de un LLM upstream (OpenAI-compatible: Ollama, LM Studio,
-llama.cpp, vLLM, DeepSeek...) y **descompone cada instrucción en un árbol de
-subtareas atómicas**, las resuelve una por una y luego sintetiza una respuesta
-final.
+llama.cpp, vLLM o cualquier API remota OpenAI-compatible) y **descompone cada
+instrucción en un árbol de subtareas atómicas**, las resuelve una por una y
+luego sintetiza una respuesta final.
 
 La idea: modelos más pequeños o más baratos suelen fallar en tareas
 compuestas. Este proxy fuerza un proceso de tres fases —planificar, ejecutar,
@@ -59,7 +59,7 @@ El dominio depende solo de interfaces (`core/ports.LLMClient`,
 
 - Go 1.24+
 - Un endpoint upstream compatible con la API de chat completions de OpenAI
-  (Ollama, LM Studio, llama.cpp, vLLM, DeepSeek, etc.)
+  (Ollama, LM Studio, llama.cpp, vLLM o cualquier API remota OpenAI-compatible)
 
 ## Instalación y ejecución
 

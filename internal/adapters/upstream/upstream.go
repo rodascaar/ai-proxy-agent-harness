@@ -1,6 +1,6 @@
 // Package upstream implementa el puerto ports.LLMClient contra cualquier
 // upstream compatible con la API de chat completions de OpenAI (Ollama, LM
-// Studio, llama.cpp, vLLM, DeepSeek, etc.).
+// Studio, llama.cpp, vLLM o cualquier API remota OpenAI-compatible).
 package upstream
 
 import (
