@@ -26,7 +26,7 @@
 
     <aside class="config" aria-label="Configuración">
       <h2>Configuración</h2>
-      <p class="hint">Los cambios se guardan en <code>.env</code> y aplican al reiniciar el proxy.</p>
+      <p class="hint">Los cambios se guardan en <code>.env</code> y aplican al reiniciar el proxy. Escribí la URL de cada servidor y usá <strong>Detectar</strong> para traer sus modelos.</p>
       <form id="config-form">
         <div class="chat-model">
           <label>Modelo del chat
@@ -43,7 +43,11 @@
         <fieldset class="upstream">
           <legend>Upstream 1 (primario)</legend>
           <label>URL
-            <input name="UPSTREAM_1_BASE_URL" placeholder="http://127.0.0.1:1234/v1" />
+            <span class="url-row">
+              <input name="UPSTREAM_1_BASE_URL" placeholder="http://127.0.0.1:1234/v1" />
+              <button type="button" class="detect-models" data-upstream="UPSTREAM_1">Detectar</button>
+            </span>
+            <span class="detect-status" data-status-for="UPSTREAM_1" hidden></span>
           </label>
           <label>Modelos (separados por coma)
             <input name="UPSTREAM_1_MODELS" placeholder="qwen2.5:7b,llama3.2:3b" />
@@ -56,7 +60,11 @@
         <fieldset class="upstream">
           <legend>Upstream 2 (opcional)</legend>
           <label>URL
-            <input name="UPSTREAM_2_BASE_URL" placeholder="https://api.openai.com/v1" />
+            <span class="url-row">
+              <input name="UPSTREAM_2_BASE_URL" placeholder="https://api.openai.com/v1" />
+              <button type="button" class="detect-models" data-upstream="UPSTREAM_2">Detectar</button>
+            </span>
+            <span class="detect-status" data-status-for="UPSTREAM_2" hidden></span>
           </label>
           <label>Modelos (separados por coma)
             <input name="UPSTREAM_2_MODELS" placeholder="gpt-4o-mini" />
@@ -69,7 +77,11 @@
         <fieldset class="upstream">
           <legend>Upstream 3 (opcional)</legend>
           <label>URL
-            <input name="UPSTREAM_3_BASE_URL" placeholder="" />
+            <span class="url-row">
+              <input name="UPSTREAM_3_BASE_URL" placeholder="" />
+              <button type="button" class="detect-models" data-upstream="UPSTREAM_3">Detectar</button>
+            </span>
+            <span class="detect-status" data-status-for="UPSTREAM_3" hidden></span>
           </label>
           <label>Modelos (separados por coma)
             <input name="UPSTREAM_3_MODELS" placeholder="" />

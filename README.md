@@ -75,6 +75,7 @@ El proxy queda disponible en `http://127.0.0.1:8000`, exponiendo:
 - `GET /healthz` — healthcheck
 - `/` — Web UI embebida (chat + configuración)
 - `GET/PUT /api/config` — ver y editar la configuración (se guarda en `.env`)
+- `POST /api/detect-models` — detecta los modelos reales de un endpoint (usado por el botón "Detectar" de la UI)
 
 Apunta cualquier cliente compatible (SDK oficial, agentes de código, etc.) a
 esta URL como `base_url`. Ejemplo con el SDK de OpenAI apuntando a Ollama:
@@ -97,8 +98,12 @@ El panel de configuración lee/escribe `.env`; los cambios **aplican al
 reiniciar el proxy**. Incluye un **selector dinámico de modelo** que lista los
 modelos disponibles en todos los upstreams (consulta `GET /v1/models`, con
 botón para recargar), y bloques para configurar hasta 3 upstreams (URL +
-modelos + API key), de modo que puedas combinar un modelo local y una API
-remota desde la propia UI.
+modelos + API key).
+
+Cada bloque tiene un botón **"Detectar"**: escribe la URL de tu servidor
+(sea LM Studio, Ollama o llama.cpp), clickeá Detectar y la UI consulta el
+`/v1/models` real de ese servidor y rellena el campo de modelos solo. Así no
+hace falta saber (ni teclear) los nombres exactos.
 
 ## Modelo del upstream (detección dinámica)
 
@@ -151,7 +156,7 @@ completas en [`.env.example`](.env.example):
 | --- | --- | --- |
 | `UPSTREAM_BASE_URL` | *(requerido)* | Base del upstream OpenAI-compatible (ej. Ollama: `http://127.0.0.1:11434/v1`, LM Studio: `http://127.0.0.1:1234/v1`, llama.cpp: `http://127.0.0.1:8080/v1`) |
 | `UPSTREAM_API_KEY` | `""` | API key del upstream (omitida si vacía) |
-| `UPSTREAM_MODEL` | *(requerido)* | Modelo por defecto del upstream (reenviado a menos que el request envíe `model`; también se anuncia en `GET /v1/models`) |
+| `UPSTREAM_MODEL` | *(requerido)* | Modelo(s) por defecto del upstream, separados por coma (ej. `liquid/lfm2-1.2b,qwen/qwen3-1.7b`); el primero es el default (reenviado a menos que el request envíe `model`) |
 | `UPSTREAM_{1..3}_BASE_URL` | `""` | Upstream indexado (alternativa/complemento al legado); si se define al menos el 1, se usan los indexados |
 | `UPSTREAM_{1..3}_MODELS` | `""` | Modelos que expone el upstream indexado (separados por coma) |
 | `UPSTREAM_{1..3}_API_KEY` | `""` | API key bearer del upstream indexado |
@@ -178,6 +183,39 @@ UPSTREAM_MODEL=qwen2.5:7b
 EOF
 make run
 ```
+
+### Un servidor local con varios modelos
+
+Un solo LM Studio (o Ollama) con dos modelos cargados en la misma API: se
+escriben separados por coma en `UPSTREAM_MODEL`. El primero es el modelo por
+defecto del chat; el debate (speculum) puede usar ambos en el mismo servidor.
+
+```bash
+cat >> .env <<'EOF'
+UPSTREAM_BASE_URL=http://127.0.0.1:1234/v1
+UPSTREAM_MODEL=liquid/lfm2-1.2b,qwen/qwen3-1.7b
+DEBATE_ENABLED=true
+EOF
+```
+
+### Dos servidores locales (LM Studio + Ollama)
+
+Cada servidor es un upstream indexado; el proxy enruta por nombre de modelo y
+el debate puede enfrentar un modelo de cada servidor.
+
+```bash
+cat >> .env <<'EOF'
+UPSTREAM_1_BASE_URL=http://127.0.0.1:1234/v1
+UPSTREAM_1_MODELS=liquid/lfm2-1.2b
+UPSTREAM_2_BASE_URL=http://127.0.0.1:11434/v1
+UPSTREAM_2_MODELS=qwen/qwen3-1.7b
+DEBATE_ENABLED=true
+EOF
+```
+
+> Tip: no hace falta conocer los nombres exactos. En la Web UI, escribí la URL
+> de cada servidor y usá el botón **"Detectar"** (`POST /api/detect-models`):
+> la UI consulta el `/v1/models` real y rellena los modelos solos.
 
 ```bash
 curl http://127.0.0.1:8000/v1/chat/completions \

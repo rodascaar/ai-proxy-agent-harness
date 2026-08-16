@@ -70,6 +70,7 @@ func New(svc *service.Service, cfg *config.Config, lister ports.ModelLister, log
 	mux.HandleFunc("POST /v1/chat/completions", s.chatCompletions)
 	mux.HandleFunc("GET /api/config", s.getConfig)
 	mux.HandleFunc("PUT /api/config", s.putConfig)
+	mux.HandleFunc("POST /api/detect-models", s.detectModels)
 	mux.Handle("/", webui.Handler())
 	return s.requestID(s.recovery(mux))
 }

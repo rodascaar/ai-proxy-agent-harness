@@ -232,6 +232,26 @@ func TestLoadLegacyFallsBackToSingleUpstream(t *testing.T) {
 	}
 }
 
+func TestLoadLegacyModelListIsCSVSplit(t *testing.T) {
+	// UPSTREAM_MODEL acepta varios modelos separados por coma (un solo
+	// servidor, p. ej. LM Studio con dos modelos cargados).
+	clearEnv(t)
+	setRequired(t)
+	t.Setenv("UPSTREAM_MODEL", "liquid/lfm2-1.2b,qwen/qwen3-1.7b")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	models := cfg.Upstreams[0].Models
+	if len(models) != 2 || models[0] != "liquid/lfm2-1.2b" || models[1] != "qwen/qwen3-1.7b" {
+		t.Errorf("expected 2 models from legacy CSV, got %v", models)
+	}
+	if got := cfg.DefaultModel(); got != "liquid/lfm2-1.2b" {
+		t.Errorf("expected DefaultModel to be the first model, got %q", got)
+	}
+}
+
 func TestLoadLegacyPlusAdditionalUpstream(t *testing.T) {
 	// Legado (primario) + un upstream adicional remoto: conviven sin reescribir
 	// la configuración previa.

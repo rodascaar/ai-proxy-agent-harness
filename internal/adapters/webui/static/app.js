@@ -336,6 +336,61 @@ async function saveConfig(event) {
   }
 }
 
+// detectModels consulta POST /api/detect-models con la URL del upstream y, si
+// el servidor responde, rellena el campo MODELS con los modelos reales
+// (separados por coma). No hace falta saber/teclear los nombres exactos.
+async function detectModels(prefix) {
+  const form = configForm.elements;
+  const url = String(form[prefix + "_BASE_URL"].value || "").trim();
+  const apiKey = String(form[prefix + "_API_KEY"].value || "").trim();
+  const modelsEl = form[prefix + "_MODELS"];
+  const statusEl = document.querySelector('[data-status-for="' + prefix + '"]');
+  const btn = document.querySelector('.detect-models[data-upstream="' + prefix + '"]');
+
+  if (!url) {
+    statusEl.textContent = "Ingresá la URL del servidor primero.";
+    statusEl.className = "detect-status err";
+    statusEl.hidden = false;
+    return;
+  }
+
+  statusEl.textContent = "Consultando…";
+  statusEl.className = "detect-status";
+  statusEl.hidden = false;
+  btn.disabled = true;
+  btn.textContent = "…";
+
+  try {
+    const res = await fetch("/api/detect-models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: url, apiKey: apiKey }),
+    });
+    const payload = await res.json();
+    if (!res.ok || !payload.reachable) {
+      const msg = (payload.error && payload.error.message) || payload.error || "HTTP " + res.status;
+      statusEl.textContent = "✗ " + msg;
+      statusEl.className = "detect-status err";
+      return;
+    }
+    const ids = (payload.models || []).map((m) => m.id);
+    if (ids.length === 0) {
+      statusEl.textContent = "✓ Conectado, pero el servidor no publica modelos.";
+      statusEl.className = "detect-status ok";
+      return;
+    }
+    modelsEl.value = ids.join(", ");
+    statusEl.textContent = "✓ " + ids.length + " modelo(s) detectado(s): " + ids.join(", ");
+    statusEl.className = "detect-status ok";
+  } catch (err) {
+    statusEl.textContent = "✗ error de conexión";
+    statusEl.className = "detect-status err";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Detectar";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
@@ -367,5 +422,9 @@ const refreshBtn = document.getElementById("refresh-models");
 if (refreshBtn) {
   refreshBtn.addEventListener("click", refreshModels);
 }
+
+document.querySelectorAll(".detect-models").forEach((btn) => {
+  btn.addEventListener("click", () => detectModels(btn.dataset.upstream));
+});
 
 loadConfig();

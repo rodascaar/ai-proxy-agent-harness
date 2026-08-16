@@ -199,6 +199,32 @@ html, body {
 }
 .config .select-row button:hover { border-color: var(--accent); }
 
+.config .url-row { display: flex; gap: 6px; }
+.config .url-row input { flex: 1; }
+.config .url-row button {
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.config .url-row button:hover { border-color: var(--accent); }
+.config .url-row button:disabled { opacity: 0.6; cursor: wait; }
+
+.config .detect-status {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.config .detect-status.ok { color: var(--ok); }
+.config .detect-status.err { color: var(--error); }
+
 .config .chat-model { margin-bottom: 16px; }
 
 .config fieldset.upstream {

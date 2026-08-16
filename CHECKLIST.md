@@ -130,3 +130,13 @@ es una mejora de este proxy sobre el comportamiento base.
 - [x] Docs: README (selector dinámico + bloques de upstream)
 - [x] Tests: config (merge), httpapi (defaultModel en getConfig) con `-race`
 
+## Fase 8 — Detección automática de modelos y fix del CSV legado
+
+- [x] `config`: `UPSTREAM_MODEL` acepta CSV (`splitCSV`) en la ruta legada; test de 2 modelos + `DefaultModel` = primero
+- [x] `config`: `ValidateBaseURL` extraído y reutilizado por `validateUpstreams` (DRY)
+- [x] `httpapi`: `POST /api/detect-models` — consulta `/v1/models` de un endpoint dado (URL + API key) y devuelve `{reachable, models|error}`; valida URL con `config.ValidateBaseURL`
+- [x] `webui`: botón "Detectar" por upstream (rellena `UPSTREAM_N_MODELS` con los modelos reales) + status ✓/✗
+- [x] Tests httpapi: detect-models (alcanzable, API key, inalcanzable, URL inválida, body vacío)
+- [x] Docs: README (ejemplos 1 servidor con 2 modelos y 2 servidores locales, endpoint detect-models), `.env.example` (CSV + nota Detectar)
+- [x] `gofmt` + `go vet` + `golangci-lint` + `go test -race ./...` limpios
+

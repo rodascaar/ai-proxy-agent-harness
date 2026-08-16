@@ -2,10 +2,15 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
+	"ai-proxy-agent-harness/internal/adapters/upstream"
+	"ai-proxy-agent-harness/internal/config"
 	"ai-proxy-agent-harness/internal/core/openai"
 	"ai-proxy-agent-harness/internal/core/ports"
 )
@@ -90,5 +95,50 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"object": openai.ObjectList,
 		"data":   data,
+	})
+}
+
+// detectTimeout acota la consulta a un servidor remoto en la detección manual.
+const detectTimeout = 5 * time.Second
+
+// detectModels expone POST /api/detect-models: dado un endpoint OpenAI-compatible
+// (URL + API key opcional), consulta su GET /v1/models y devuelve los modelos
+// reales que anuncia. La UI lo usa para rellenar UPSTREAM_N_MODELS sin que el
+// usuario tenga que escribir los nombres exactos.
+//
+// La respuesta es estructurada (siempre 200 salvo error de entrada): si el
+// servidor es alcanzable, reachable=true con los modelos; si no, reachable=false
+// con el error del transporte para mostrarlo en la UI.
+func (s *Server) detectModels(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		URL    string `json:"url"`
+		APIKey string `json:"apiKey"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_request_error", "invalid request body: "+err.Error())
+		return
+	}
+	body.URL = strings.TrimSpace(body.URL)
+	if err := config.ValidateBaseURL(body.URL); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), detectTimeout)
+	defer cancel()
+
+	client := upstream.New(body.URL, body.APIKey, detectTimeout)
+	models, err := client.ListModels(ctx)
+	if err != nil {
+		s.logger.Debug("detect-models upstream unreachable", "request_id", requestIDFrom(r.Context()), "url", body.URL, "err", err)
+		s.writeJSON(w, http.StatusOK, map[string]any{
+			"reachable": false,
+			"error":     err.Error(),
+		})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"reachable": true,
+		"models":    models,
 	})
 }

@@ -364,7 +364,7 @@ func resolveUpstreams(get func(string) (string, bool)) []Upstream {
 			legacy.APIKey = key
 		}
 		if model, ok := get(UPSTREAM_MODEL_KEY); ok && model != "" {
-			legacy.Models = []string{model}
+			legacy.Models = splitCSV(model)
 		}
 		if strings.TrimSpace(legacy.BaseURL) != "" {
 			primary = &legacy
@@ -456,6 +456,17 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// ValidateBaseURL valida que una URL sea http(s) absoluta (la raíz de un API
+// OpenAI-compatible). Se reutiliza en la validación de config y en el endpoint
+// de detección de modelos de la UI.
+func ValidateBaseURL(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return fmt.Errorf("invalid base url %q: must be an absolute http(s) url", raw)
+	}
+	return nil
+}
+
 // validateUpstreams valida que exista al menos un upstream con URL http(s) y
 // al menos un modelo. Mantiene el invariante del proyecto: no se puede operar
 // sin un upstream configurado.
@@ -464,12 +475,8 @@ func (c *Config) validateUpstreams() error {
 		return errors.New("invalid config: at least one upstream is required (set UPSTREAM_BASE_URL+UPSTREAM_MODEL or UPSTREAM_1_BASE_URL+UPSTREAM_1_MODELS)")
 	}
 	for index, upstream := range c.Upstreams {
-		if strings.TrimSpace(upstream.BaseURL) == "" {
-			return fmt.Errorf("invalid config: upstream %d base url is empty", index+1)
-		}
-		parsed, err := url.Parse(upstream.BaseURL)
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-			return fmt.Errorf("invalid upstream %d base url %q: must be an absolute http(s) url", index+1, upstream.BaseURL)
+		if err := ValidateBaseURL(upstream.BaseURL); err != nil {
+			return fmt.Errorf("invalid config: upstream %d: %w", index+1, err)
 		}
 		if len(upstream.Models) == 0 {
 			return fmt.Errorf("invalid config: upstream %d has no models (set UPSTREAM_%d_MODELS)", index+1, index+1)
