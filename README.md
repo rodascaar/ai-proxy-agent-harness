@@ -94,7 +94,11 @@ vanilla vía `go:embed`): no agrega dependencias ni proceso adicional, y ocupa
 pocos KB.
 
 El panel de configuración lee/escribe `.env`; los cambios **aplican al
-reiniciar el proxy**.
+reiniciar el proxy**. Incluye un **selector dinámico de modelo** que lista los
+modelos disponibles en todos los upstreams (consulta `GET /v1/models`, con
+botón para recargar), y bloques para configurar hasta 3 upstreams (URL +
+modelos + API key), de modo que puedas combinar un modelo local y una API
+remota desde la propia UI.
 
 ## Modelo del upstream (detección dinámica)
 

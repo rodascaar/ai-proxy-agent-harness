@@ -232,6 +232,48 @@ func TestLoadLegacyFallsBackToSingleUpstream(t *testing.T) {
 	}
 }
 
+func TestLoadLegacyPlusAdditionalUpstream(t *testing.T) {
+	// Legado (primario) + un upstream adicional remoto: conviven sin reescribir
+	// la configuración previa.
+	clearEnv(t)
+	setRequired(t)
+	t.Setenv("UPSTREAM_2_BASE_URL", "https://api.openai.com/v1")
+	t.Setenv("UPSTREAM_2_MODELS", "gpt-4o-mini")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if len(cfg.Upstreams) != 2 {
+		t.Fatalf("expected 2 upstreams (legacy + UPSTREAM_2), got %d", len(cfg.Upstreams))
+	}
+	if cfg.Upstreams[0].BaseURL != "http://localhost:11434/v1" {
+		t.Errorf("expected legacy as primary, got %q", cfg.Upstreams[0].BaseURL)
+	}
+	if cfg.Upstreams[1].BaseURL != "https://api.openai.com/v1" {
+		t.Errorf("expected UPSTREAM_2 as additional, got %q", cfg.Upstreams[1].BaseURL)
+	}
+}
+
+func TestLoadIndexedPrimaryOverridesLegacy(t *testing.T) {
+	// Si UPSTREAM_1 está presente, es el primario y el legado se ignora.
+	clearEnv(t)
+	setRequired(t)
+	t.Setenv("UPSTREAM_1_BASE_URL", "http://127.0.0.1:11434/v1")
+	t.Setenv("UPSTREAM_1_MODELS", "qwen2.5:7b")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if len(cfg.Upstreams) != 1 {
+		t.Fatalf("expected 1 upstream (indexed primary), got %d", len(cfg.Upstreams))
+	}
+	if cfg.Upstreams[0].BaseURL != "http://127.0.0.1:11434/v1" {
+		t.Errorf("expected indexed primary, got %q", cfg.Upstreams[0].BaseURL)
+	}
+}
+
 func TestLoadMultiUpstreamIgnoresEmptySlots(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("UPSTREAM_1_BASE_URL", "http://127.0.0.1:11434/v1")

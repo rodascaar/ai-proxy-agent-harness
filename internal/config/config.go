@@ -342,32 +342,20 @@ func build(get func(string) (string, bool)) (*Config, error) {
 // resolveUpstreams construye la lista de upstreams desde el entorno. Soporta
 // dos formas, no exclusivas:
 //
-//  1. Legada: UPSTREAM_BASE_URL + UPSTREAM_MODEL (+ UPSTREAM_API_KEY) para un
-//     solo upstream, sin enumerar. Es la forma clásica del proyecto.
+//  1. Legada: UPSTREAM_BASE_URL + UPSTREAM_MODEL (+ UPSTREAM_API_KEY). Es la
+//     forma clásica del proyecto; equivale al primer upstream.
 //  2. Indexada: UPSTREAM_1_BASE_URL + UPSTREAM_1_MODELS (+ UPSTREAM_1_API_KEY),
 //     UPSTREAM_2_*, UPSTREAM_3_* para varios upstreams (locales o remotos).
 //
-// Si hay al menos un upstream indexado, se usan los indexados; si no, se cae
-// al legado. Los indexados sin URL o sin modelos se ignoran (permite definir
-// UPSTREAM_2_* y dejar UPSTREAM_3_* vacío).
+// Regla de resolución: UPSTREAM_1_* (si existe) es el primario; si no, el
+// legado lo es. Los UPSTREAM_2_* y UPSTREAM_3_* son adicionales. Así el legado
+// convive con un segundo upstream remoto (ej. un LM Studio local + una API
+// remota) sin reescribir la configuración previa.
 func resolveUpstreams(get func(string) (string, bool)) []Upstream {
 	var upstreams []Upstream
-	for n := 1; n <= defaultMaxUpstreams; n++ {
-		prefix := fmt.Sprintf("UPSTREAM_%d_", n)
-		baseURL, ok := get(prefix + "BASE_URL")
-		if !ok || strings.TrimSpace(baseURL) == "" {
-			continue
-		}
-		upstream := Upstream{BaseURL: baseURL}
-		if key, ok := get(prefix + "API_KEY"); ok {
-			upstream.APIKey = key
-		}
-		if models, ok := get(prefix + "MODELS"); ok {
-			upstream.Models = splitCSV(models)
-		}
-		upstreams = append(upstreams, upstream)
-	}
-	if len(upstreams) == 0 {
+
+	primary := upstreamFromPrefix(get, "UPSTREAM_1_")
+	if primary == nil {
 		legacy := Upstream{}
 		if baseURL, ok := get(UPSTREAM_BASE_URL_KEY); ok {
 			legacy.BaseURL = baseURL
@@ -378,11 +366,37 @@ func resolveUpstreams(get func(string) (string, bool)) []Upstream {
 		if model, ok := get(UPSTREAM_MODEL_KEY); ok && model != "" {
 			legacy.Models = []string{model}
 		}
-		if legacy.BaseURL != "" {
-			upstreams = append(upstreams, legacy)
+		if strings.TrimSpace(legacy.BaseURL) != "" {
+			primary = &legacy
+		}
+	}
+	if primary != nil {
+		upstreams = append(upstreams, *primary)
+	}
+
+	for n := 2; n <= defaultMaxUpstreams; n++ {
+		if up := upstreamFromPrefix(get, fmt.Sprintf("UPSTREAM_%d_", n)); up != nil {
+			upstreams = append(upstreams, *up)
 		}
 	}
 	return upstreams
+}
+
+// upstreamFromPrefix lee un upstream indexado (URL + API key + modelos). Si no
+// hay URL, devuelve nil (permite dejar slots vacíos entre otros).
+func upstreamFromPrefix(get func(string) (string, bool), prefix string) *Upstream {
+	baseURL, ok := get(prefix + "BASE_URL")
+	if !ok || strings.TrimSpace(baseURL) == "" {
+		return nil
+	}
+	upstream := &Upstream{BaseURL: baseURL}
+	if key, ok := get(prefix + "API_KEY"); ok {
+		upstream.APIKey = key
+	}
+	if models, ok := get(prefix + "MODELS"); ok {
+		upstream.Models = splitCSV(models)
+	}
+	return upstream
 }
 
 // splitCSV divide una lista de modelos separados por coma, recortando espacios

@@ -23,8 +23,9 @@ func TestGetConfig(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	payload := decodeResponse[struct {
-		Config    map[string]string `json:"config"`
-		APIKeySet bool              `json:"apiKeySet"`
+		Config       map[string]string `json:"config"`
+		APIKeySet    bool              `json:"apiKeySet"`
+		DefaultModel string            `json:"defaultModel"`
 	}](t, rec)
 	if payload.Config["UPSTREAM_MODEL"] != "test-model" {
 		t.Errorf("expected test-model, got %q", payload.Config["UPSTREAM_MODEL"])
@@ -34,6 +35,9 @@ func TestGetConfig(t *testing.T) {
 	}
 	if payload.APIKeySet {
 		t.Errorf("apiKeySet should be false in the test server")
+	}
+	if payload.DefaultModel != "test-model" {
+		t.Errorf("expected defaultModel test-model, got %q", payload.DefaultModel)
 	}
 }
 

@@ -119,3 +119,14 @@ es una mejora de este proxy sobre el comportamiento base.
 - [x] Tests: config (multi-upstream, debate), router (routing, probe, list), debate (self-refine, multi-model, límite de rondas), engine (debate activa/desactiva) con `-race`
 - [x] `gofmt` + `go vet` + `golangci-lint` limpios
 
+## Fase 7 — Selector dinámico de modelos en la UI
+
+- [x] `config`: `resolveUpstreams` unifica legado + indexado (legado como primario si no hay `UPSTREAM_1_*`; `UPSTREAM_2/3_*` adicionales)
+- [x] `config`: `upstreamFromPrefix` reutilizable; tests de merge legado+adicional e indexed-overrides-legacy
+- [x] `httpapi`: `getConfig` expone `defaultModel`; `putConfig` enmascara cualquier `*_API_KEY` vacío
+- [x] `webui/index.html`: `<select id="model-select">` + bloques de upstream 1/2/3 (fieldsets) + botón refrescar
+- [x] `webui/app.js`: `refreshModels()` consulta `GET /v1/models` y popula el selector; `sendMessage` lee el `<select>`
+- [x] `webui/style.css`: estilos para fieldsets y selector de modelo
+- [x] Docs: README (selector dinámico + bloques de upstream)
+- [x] Tests: config (merge), httpapi (defaultModel en getConfig) con `-race`
+

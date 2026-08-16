@@ -28,15 +28,57 @@
       <h2>Configuración</h2>
       <p class="hint">Los cambios se guardan en <code>.env</code> y aplican al reiniciar el proxy.</p>
       <form id="config-form">
-        <label>URL del upstream
-          <input name="UPSTREAM_BASE_URL" placeholder="http://127.0.0.1:1234/v1" />
-        </label>
-        <label>Modelo
-          <input name="UPSTREAM_MODEL" placeholder="qwen2.5:7b" />
-        </label>
-        <label>API key <span class="set" id="key-badge" hidden>configurada</span>
-          <input name="UPSTREAM_API_KEY" type="password" placeholder="(dejar vacío para conservar)" />
-        </label>
+        <div class="chat-model">
+          <label>Modelo del chat
+            <span class="select-row">
+              <select id="model-select">
+                <option value="">(cargando modelos…)</option>
+              </select>
+              <button type="button" id="refresh-models" title="Recargar la lista de modelos">↻</button>
+            </span>
+          </label>
+          <p class="hint">Lista los modelos disponibles en todos los upstreams.</p>
+        </div>
+
+        <fieldset class="upstream">
+          <legend>Upstream 1 (primario)</legend>
+          <label>URL
+            <input name="UPSTREAM_1_BASE_URL" placeholder="http://127.0.0.1:1234/v1" />
+          </label>
+          <label>Modelos (separados por coma)
+            <input name="UPSTREAM_1_MODELS" placeholder="qwen2.5:7b,llama3.2:3b" />
+          </label>
+          <label>API key <span class="set" id="key-badge" hidden>configurada</span>
+            <input name="UPSTREAM_1_API_KEY" type="password" placeholder="(dejar vacío para conservar)" />
+          </label>
+        </fieldset>
+
+        <fieldset class="upstream">
+          <legend>Upstream 2 (opcional)</legend>
+          <label>URL
+            <input name="UPSTREAM_2_BASE_URL" placeholder="https://api.openai.com/v1" />
+          </label>
+          <label>Modelos (separados por coma)
+            <input name="UPSTREAM_2_MODELS" placeholder="gpt-4o-mini" />
+          </label>
+          <label>API key
+            <input name="UPSTREAM_2_API_KEY" type="password" placeholder="(dejar vacío para conservar)" />
+          </label>
+        </fieldset>
+
+        <fieldset class="upstream">
+          <legend>Upstream 3 (opcional)</legend>
+          <label>URL
+            <input name="UPSTREAM_3_BASE_URL" placeholder="" />
+          </label>
+          <label>Modelos (separados por coma)
+            <input name="UPSTREAM_3_MODELS" placeholder="" />
+          </label>
+          <label>API key
+            <input name="UPSTREAM_3_API_KEY" type="password" placeholder="(dejar vacío para conservar)" />
+          </label>
+        </fieldset>
+
         <label class="toggle"><input name="DEBATE_ENABLED" type="checkbox" /> Debate multi-modelo (speculum)</label>
         <label>Rondas de debate (2-3)
           <input name="DEBATE_ROUNDS" type="number" min="2" max="3" />

@@ -13,8 +13,9 @@ import (
 // nunca se expone: solo se informa si está seteada.
 func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
-		"config":    s.cfg.Values(),
-		"apiKeySet": s.cfg.HasAPIKey(),
+		"config":       s.cfg.Values(),
+		"apiKeySet":    s.cfg.HasAPIKey(),
+		"defaultModel": s.cfg.DefaultModel(),
 	})
 }
 
@@ -34,8 +35,10 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if v, ok := body.Config["UPSTREAM_API_KEY"]; ok && strings.TrimSpace(v) == "" {
-		delete(body.Config, "UPSTREAM_API_KEY")
+	for key, value := range body.Config {
+		if strings.HasSuffix(key, "_API_KEY") && strings.TrimSpace(value) == "" {
+			delete(body.Config, key)
+		}
 	}
 
 	if err := s.cfg.ValidateOverride(body.Config); err != nil {

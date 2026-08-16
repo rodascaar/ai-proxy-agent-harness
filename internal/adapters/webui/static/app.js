@@ -116,7 +116,8 @@ async function sendMessage(text) {
   addMessage("user", markdownLite(text));
 
   const assistant = createAssistant();
-  const model = document.querySelector('[name="UPSTREAM_MODEL"]').value || "";
+  const modelEl = document.getElementById("model-select");
+  const model = (modelEl && modelEl.value) || "";
 
   busy = true;
   sendBtn.disabled = true;
@@ -216,6 +217,52 @@ function handleSSE(raw, assistant) {
 }
 
 // ---------------------------------------------------------------------------
+// Modelos (selector dinámico)
+// ---------------------------------------------------------------------------
+
+let defaultModel = "";
+
+// refreshModels consulta GET /v1/models y popula el <select> con los modelos
+// disponibles en todos los upstreams, preseleccionando el modelo por defecto.
+async function refreshModels() {
+  const select = document.getElementById("model-select");
+  if (!select) return;
+  const previous = select.value;
+  try {
+    const res = await fetch("/v1/models");
+    if (!res.ok) {
+      select.innerHTML = '<option value="">(no disponible)</option>';
+      return;
+    }
+    const payload = await res.json();
+    const models = (payload.data || []).map((m) => m.id);
+    select.innerHTML = "";
+    if (models.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "(sin modelos)";
+      select.appendChild(opt);
+      return;
+    }
+    for (const id of models) {
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = id;
+      select.appendChild(opt);
+    }
+    // Preselecciona el default; en un refresh manual conserva la selección.
+    const want = previous || defaultModel;
+    if (want && models.includes(want)) {
+      select.value = want;
+    } else if (defaultModel && models.includes(defaultModel)) {
+      select.value = defaultModel;
+    }
+  } catch {
+    select.innerHTML = '<option value="">(error de conexión)</option>';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Configuración
 // ---------------------------------------------------------------------------
 
@@ -228,9 +275,12 @@ async function loadConfig() {
     }
     const payload = await res.json();
     const config = payload.config || {};
+    if (payload.defaultModel) {
+      defaultModel = payload.defaultModel;
+    }
 
     for (const el of configForm.elements) {
-      if (!el.name || el.name === "UPSTREAM_API_KEY") continue;
+      if (!el.name || el.name.endsWith("_API_KEY")) continue;
       if (el.type === "checkbox") {
         el.checked = config[el.name] === "true";
       } else if (config[el.name] !== undefined) {
@@ -240,6 +290,7 @@ async function loadConfig() {
     if (payload.apiKeySet) {
       keyBadge.hidden = false;
     }
+    await refreshModels();
     setStatus(true, "listo");
   } catch (err) {
     setStatus(false, "error de conexión");
@@ -254,7 +305,7 @@ async function saveConfig(event) {
     const el = configForm.elements[key];
     if (el && el.type === "checkbox") {
       values[key] = el.checked ? "true" : "false";
-    } else if (key === "UPSTREAM_API_KEY") {
+    } else if (key.endsWith("_API_KEY")) {
       const v = String(value || "").trim();
       if (v !== "") values[key] = v; // vacío = conservar la key actual
     } else {
@@ -311,5 +362,10 @@ inputEl.addEventListener("input", () => {
 });
 
 configForm.addEventListener("submit", saveConfig);
+
+const refreshBtn = document.getElementById("refresh-models");
+if (refreshBtn) {
+  refreshBtn.addEventListener("click", refreshModels);
+}
 
 loadConfig();

@@ -171,6 +171,50 @@ html, body {
 }
 .config label input:focus { outline: none; border-color: var(--accent); }
 
+.config label select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+.config label select:focus { outline: none; border-color: var(--accent); }
+
+.config .select-row { display: flex; gap: 6px; }
+.config .select-row select { flex: 1; margin-top: 4px; }
+.config .select-row button {
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.config .select-row button:hover { border-color: var(--accent); }
+
+.config .chat-model { margin-bottom: 16px; }
+
+.config fieldset.upstream {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin: 0 0 16px;
+}
+.config fieldset.upstream legend {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 6px;
+}
+.config fieldset.upstream label { margin-bottom: 10px; }
+.config fieldset.upstream label:last-child { margin-bottom: 0; }
+
 .config .toggle { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .config .toggle input { display: inline; width: auto; margin: 0; }
 
