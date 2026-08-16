@@ -58,15 +58,18 @@ func New(baseURL, apiKey string, timeout time.Duration) *Client {
 	}
 }
 
-// chatURL devuelve el endpoint de chat completions del upstream.
+// chatURL devuelve el endpoint de chat completions del upstream. La base es
+// la raíz del API (p. ej. "http://127.0.0.1:11434/v1" o
+// "https://generativelanguage.googleapis.com/v1beta/openai"), por lo que solo
+// se añade "/chat/completions" (nunca "/v1/...", que duplicaría el prefijo).
 func (c *Client) chatURL() string {
-	return c.baseURL + "/v1/chat/completions"
+	return c.baseURL + "/chat/completions"
 }
 
-// Probe verifica que el upstream esté disponible consultando GET /v1/models.
+// Probe verifica que el upstream esté disponible consultando GET /models.
 // Se usa como warmup opcional al arrancar (sin disparar una inferencia).
 func (c *Client) Probe(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/models", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/models", nil)
 	if err != nil {
 		return fmt.Errorf("building probe request: %w", err)
 	}
@@ -84,12 +87,12 @@ func (c *Client) Probe(ctx context.Context) error {
 	return nil
 }
 
-// ListModels implementa ports.ModelLister: consulta GET /v1/models del
+// ListModels implementa ports.ModelLister: consulta GET /models del
 // upstream y devuelve los descriptores que anuncia. Se usa para poblar la UI
 // con los modelos realmente disponibles (así el cliente no pide uno inexistente,
 // lo que haría al upstream cargar/recargar un modelo de más).
 func (c *Client) ListModels(ctx context.Context) ([]openai.ModelDescriptor, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/models", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/models", nil)
 	if err != nil {
 		return nil, fmt.Errorf("building list request: %w", err)
 	}

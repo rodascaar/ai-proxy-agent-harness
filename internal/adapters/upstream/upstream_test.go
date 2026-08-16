@@ -33,7 +33,7 @@ func TestCompleteNonStreaming(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(server.URL, "sk-test", 5*time.Second)
+	client := New(server.URL+"/v1", "sk-test", 5*time.Second)
 	out, err := client.Complete(context.Background(), ports.CompleteRequest{
 		Model:    "m",
 		Messages: []openai.Message{{Role: openai.RoleUser, Content: openai.NewTextContent("hi")}},
@@ -49,6 +49,52 @@ func TestCompleteNonStreaming(t *testing.T) {
 	}
 	if received.Model != "m" || len(received.Messages) != 1 {
 		t.Errorf("unexpected payload: %#v", received)
+	}
+}
+
+// TestChatURLToleratesV1Suffix verifies que una base con sufijo "/v1" produce
+// una sola "/v1" en el path (regresión del bug del doble "/v1/v1/...").
+func TestChatURLToleratesV1Suffix(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer server.Close()
+
+	client := New(server.URL+"/v1", "", 5*time.Second)
+	if _, err := client.Complete(context.Background(), ports.CompleteRequest{
+		Model:    "m",
+		Messages: []openai.Message{{Role: openai.RoleUser, Content: openai.NewTextContent("x")}},
+	}); err != nil {
+		t.Fatalf("Complete() error: %v", err)
+	}
+	if gotPath != "/v1/chat/completions" {
+		t.Errorf("expected path /v1/chat/completions, got %q (double /v1 bug)", gotPath)
+	}
+}
+
+// TestChatURLWithoutV1Suffix verifies una base sin "/v1" también funciona
+// (aunque la convención documentada es incluir la raíz completa del API).
+func TestChatURLWithoutV1Suffix(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "", 5*time.Second)
+	if _, err := client.Complete(context.Background(), ports.CompleteRequest{
+		Model:    "m",
+		Messages: []openai.Message{{Role: openai.RoleUser, Content: openai.NewTextContent("x")}},
+	}); err != nil {
+		t.Fatalf("Complete() error: %v", err)
+	}
+	if gotPath != "/chat/completions" {
+		t.Errorf("expected path /chat/completions, got %q", gotPath)
 	}
 }
 
@@ -159,7 +205,7 @@ func TestStreamParsesDeltasAndFinishReason(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(server.URL, "sk", 5*time.Second)
+	client := New(server.URL+"/v1", "sk", 5*time.Second)
 	var contents []string
 	var reasoning []string
 	var finishReasons []string
@@ -316,7 +362,7 @@ func TestListModelsParsesUpstreamList(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(server.URL, "sk-test", 5*time.Second)
+	client := New(server.URL+"/v1", "sk-test", 5*time.Second)
 	models, err := client.ListModels(context.Background())
 	if err != nil {
 		t.Fatalf("ListModels() error: %v", err)
