@@ -35,10 +35,19 @@ const (
 	defaultMaxSessions           = 200
 	defaultSessionsDir           = ".sessions"
 	defaultLogLevel              = "info"
+	defaultDebateRounds          = 2
+	defaultMaxUpstreams          = 3
 )
 
 // EnvFile es el nombre del archivo .env que lee el proxy y que edita la UI.
 const EnvFile = ".env"
+
+// Claves de las variables de entorno del upstream legado.
+const (
+	UPSTREAM_BASE_URL_KEY = "UPSTREAM_BASE_URL"
+	UPSTREAM_API_KEY_KEY  = "UPSTREAM_API_KEY"
+	UPSTREAM_MODEL_KEY    = "UPSTREAM_MODEL"
+)
 
 // ConfigKeys es el orden canónico de las variables editables desde la UI. Se
 // usa para escribir .env de forma determinista.
@@ -46,6 +55,17 @@ var ConfigKeys = []string{
 	"UPSTREAM_BASE_URL",
 	"UPSTREAM_API_KEY",
 	"UPSTREAM_MODEL",
+	"UPSTREAM_1_BASE_URL",
+	"UPSTREAM_1_MODELS",
+	"UPSTREAM_1_API_KEY",
+	"UPSTREAM_2_BASE_URL",
+	"UPSTREAM_2_MODELS",
+	"UPSTREAM_2_API_KEY",
+	"UPSTREAM_3_BASE_URL",
+	"UPSTREAM_3_MODELS",
+	"UPSTREAM_3_API_KEY",
+	"DEBATE_ENABLED",
+	"DEBATE_ROUNDS",
 	"MAX_DECOMPOSITION_DEPTH",
 	"MAX_TOOL_ROUNDS_PER_PHASE",
 	"PROXY_HOST",
@@ -59,11 +79,25 @@ var ConfigKeys = []string{
 	"LOG_LEVEL",
 }
 
+// Upstream describe un upstream OpenAI-compatible: su URL base, la API key
+// opcional (formato bearer, sin firmas cloud por ahora) y los modelos que
+// expone. Con varios upstreams configurados, el proxy puede elegir entre
+// distintos modelos locales (Ollama/LM Studio) y remotos (OpenAI, Gemini,
+// Claude) en un mismo run.
+type Upstream struct {
+	BaseURL string
+	APIKey  string
+	Models  []string
+}
+
 // Config agrupa toda la configuración resuelta de la aplicación.
 type Config struct {
 	UpstreamBaseURL        string
 	UpstreamAPIKey         string
 	UpstreamModel          string
+	Upstreams              []Upstream
+	DebateEnabled          bool
+	DebateRounds           int
 	MaxDecompositionDepth  int
 	MaxToolRoundsPerPhase  int
 	ProxyHost              string
@@ -75,6 +109,29 @@ type Config struct {
 	WarmupOnStart          bool
 	SessionsDir            string
 	LogLevel               slog.Level
+}
+
+// DefaultModel devuelve el modelo por defecto del primer upstream (o el
+// legado si no hay upstreams indexados).
+func (c *Config) DefaultModel() string {
+	if len(c.Upstreams) > 0 && len(c.Upstreams[0].Models) > 0 {
+		return c.Upstreams[0].Models[0]
+	}
+	return c.UpstreamModel
+}
+
+// HasAPIKey informa si algún upstream (legado o indexado) tiene API key
+// configurada. Se usa para el badge de la UI sin exponer la clave.
+func (c *Config) HasAPIKey() bool {
+	if c.UpstreamAPIKey != "" {
+		return true
+	}
+	for _, upstream := range c.Upstreams {
+		if upstream.APIKey != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Addr devuelve la dirección host:puerto donde debe escuchar el proxy.
@@ -120,9 +177,11 @@ func (c *Config) ValidateOverride(values map[string]string) error {
 // para exponerla en la UI (GET /api/config). La API key NO se incluye (se
 // enmascara en la capa HTTP).
 func (c *Config) Values() map[string]string {
-	return map[string]string{
+	values := map[string]string{
 		"UPSTREAM_BASE_URL":         c.UpstreamBaseURL,
 		"UPSTREAM_MODEL":            c.UpstreamModel,
+		"DEBATE_ENABLED":            strconv.FormatBool(c.DebateEnabled),
+		"DEBATE_ROUNDS":             strconv.Itoa(c.DebateRounds),
 		"MAX_DECOMPOSITION_DEPTH":   strconv.Itoa(c.MaxDecompositionDepth),
 		"MAX_TOOL_ROUNDS_PER_PHASE": strconv.Itoa(c.MaxToolRoundsPerPhase),
 		"PROXY_HOST":                c.ProxyHost,
@@ -135,6 +194,15 @@ func (c *Config) Values() map[string]string {
 		"WARMUP_ON_START":           strconv.FormatBool(c.WarmupOnStart),
 		"LOG_LEVEL":                 strings.ToLower(c.LogLevel.String()),
 	}
+	for index, upstream := range c.Upstreams {
+		n := index + 1
+		if n > defaultMaxUpstreams {
+			break
+		}
+		values[fmt.Sprintf("UPSTREAM_%d_BASE_URL", n)] = upstream.BaseURL
+		values[fmt.Sprintf("UPSTREAM_%d_MODELS", n)] = strings.Join(upstream.Models, ",")
+	}
+	return values
 }
 
 // build construye la configuración leyendo variables a través de `get`.
@@ -235,11 +303,23 @@ func build(get func(string) (string, bool)) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	debateEnabled, err := boolean("DEBATE_ENABLED", false)
+	if err != nil {
+		return nil, err
+	}
+	debateRounds, err := num("DEBATE_ROUNDS", defaultDebateRounds)
+	if err != nil {
+		return nil, err
+	}
 
+	upstreams := resolveUpstreams(get)
 	cfg := &Config{
 		UpstreamBaseURL:        str("UPSTREAM_BASE_URL", ""),
 		UpstreamAPIKey:         str("UPSTREAM_API_KEY", ""),
 		UpstreamModel:          str("UPSTREAM_MODEL", ""),
+		Upstreams:              upstreams,
+		DebateEnabled:          debateEnabled,
+		DebateRounds:           debateRounds,
 		MaxDecompositionDepth:  maxDepth,
 		MaxToolRoundsPerPhase:  maxToolRounds,
 		ProxyHost:              str("PROXY_HOST", defaultProxyHost),
@@ -259,6 +339,65 @@ func build(get func(string) (string, bool)) (*Config, error) {
 	return cfg, nil
 }
 
+// resolveUpstreams construye la lista de upstreams desde el entorno. Soporta
+// dos formas, no exclusivas:
+//
+//  1. Legada: UPSTREAM_BASE_URL + UPSTREAM_MODEL (+ UPSTREAM_API_KEY) para un
+//     solo upstream, sin enumerar. Es la forma clásica del proyecto.
+//  2. Indexada: UPSTREAM_1_BASE_URL + UPSTREAM_1_MODELS (+ UPSTREAM_1_API_KEY),
+//     UPSTREAM_2_*, UPSTREAM_3_* para varios upstreams (locales o remotos).
+//
+// Si hay al menos un upstream indexado, se usan los indexados; si no, se cae
+// al legado. Los indexados sin URL o sin modelos se ignoran (permite definir
+// UPSTREAM_2_* y dejar UPSTREAM_3_* vacío).
+func resolveUpstreams(get func(string) (string, bool)) []Upstream {
+	var upstreams []Upstream
+	for n := 1; n <= defaultMaxUpstreams; n++ {
+		prefix := fmt.Sprintf("UPSTREAM_%d_", n)
+		baseURL, ok := get(prefix + "BASE_URL")
+		if !ok || strings.TrimSpace(baseURL) == "" {
+			continue
+		}
+		upstream := Upstream{BaseURL: baseURL}
+		if key, ok := get(prefix + "API_KEY"); ok {
+			upstream.APIKey = key
+		}
+		if models, ok := get(prefix + "MODELS"); ok {
+			upstream.Models = splitCSV(models)
+		}
+		upstreams = append(upstreams, upstream)
+	}
+	if len(upstreams) == 0 {
+		legacy := Upstream{}
+		if baseURL, ok := get(UPSTREAM_BASE_URL_KEY); ok {
+			legacy.BaseURL = baseURL
+		}
+		if key, ok := get(UPSTREAM_API_KEY_KEY); ok {
+			legacy.APIKey = key
+		}
+		if model, ok := get(UPSTREAM_MODEL_KEY); ok && model != "" {
+			legacy.Models = []string{model}
+		}
+		if legacy.BaseURL != "" {
+			upstreams = append(upstreams, legacy)
+		}
+	}
+	return upstreams
+}
+
+// splitCSV divide una lista de modelos separados por coma, recortando espacios
+// y descartando vacíos.
+func splitCSV(raw string) []string {
+	parts := strings.Split(raw, ",")
+	models := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			models = append(models, trimmed)
+		}
+	}
+	return models
+}
+
 // loadDotEnvIfPresent carga .env si existe. Un .env malformado es un error
 // real (fail-fast); que el archivo no exista es el caso normal y se ignora.
 func loadDotEnvIfPresent() error {
@@ -273,15 +412,11 @@ func loadDotEnvIfPresent() error {
 }
 
 func (c *Config) validate() error {
-	if strings.TrimSpace(c.UpstreamBaseURL) == "" {
-		return errors.New("invalid config: UPSTREAM_BASE_URL is required (set it in .env or the Web UI)")
+	if err := c.validateUpstreams(); err != nil {
+		return err
 	}
-	parsed, err := url.Parse(c.UpstreamBaseURL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return fmt.Errorf("invalid upstream base url %q: must be an absolute http(s) url", c.UpstreamBaseURL)
-	}
-	if strings.TrimSpace(c.UpstreamModel) == "" {
-		return errors.New("invalid config: UPSTREAM_MODEL is required (set it in .env or the Web UI)")
+	if c.DebateRounds < 2 || c.DebateRounds > 3 {
+		return errors.New("invalid config: debate rounds must be between 2 and 3")
 	}
 	if c.MaxDecompositionDepth < 1 {
 		return errors.New("invalid config: max decomposition depth must be >= 1")
@@ -303,6 +438,28 @@ func (c *Config) validate() error {
 	}
 	if strings.TrimSpace(c.SessionsDir) == "" {
 		return errors.New("invalid config: sessions dir must not be empty")
+	}
+	return nil
+}
+
+// validateUpstreams valida que exista al menos un upstream con URL http(s) y
+// al menos un modelo. Mantiene el invariante del proyecto: no se puede operar
+// sin un upstream configurado.
+func (c *Config) validateUpstreams() error {
+	if len(c.Upstreams) == 0 {
+		return errors.New("invalid config: at least one upstream is required (set UPSTREAM_BASE_URL+UPSTREAM_MODEL or UPSTREAM_1_BASE_URL+UPSTREAM_1_MODELS)")
+	}
+	for index, upstream := range c.Upstreams {
+		if strings.TrimSpace(upstream.BaseURL) == "" {
+			return fmt.Errorf("invalid config: upstream %d base url is empty", index+1)
+		}
+		parsed, err := url.Parse(upstream.BaseURL)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			return fmt.Errorf("invalid upstream %d base url %q: must be an absolute http(s) url", index+1, upstream.BaseURL)
+		}
+		if len(upstream.Models) == 0 {
+			return fmt.Errorf("invalid config: upstream %d has no models (set UPSTREAM_%d_MODELS)", index+1, index+1)
+		}
 	}
 	return nil
 }

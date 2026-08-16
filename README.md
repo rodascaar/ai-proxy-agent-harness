@@ -112,6 +112,32 @@ nunca quede vacía.
 Esto evita disparar recargas de modelo: el cliente elige uno que ya está
 servido y el proxy lo reutiliza de forma consistente durante todo el run.
 
+## Debate multi-modelo ("speculum")
+
+Opcionalmente (y desactivado por defecto), el proxy somete el resultado de cada
+tarea atómica a un bucle de **crítica y refinamiento** antes de sintetizar:
+
+- Con **un solo modelo** disponible, ese mismo modelo juega ambos roles
+  (crítico y refinador): es el patrón *Self-Refine*.
+- Con **2-3 modelos** (locales o remotos vía varios upstreams), el crítico es
+  un modelo distinto del refinador: los modelos se vigilan entre sí
+  (*multi-agent debate*).
+
+El razonamiento del debate (rondas, crítico, refinador) se expone como
+`reasoning_content`, para que puedas ver cómo debatieron. El debate se activa
+con `DEBATE_ENABLED=true` y se controla con `DEBATE_ROUNDS` (2-3). Si una ronda
+del debate falla, el proxy conserva el resultado original: el debate es una
+mejora, no una dependencia crítica.
+
+### Múltiples upstreams
+
+Además del upstream legado (`UPSTREAM_BASE_URL`/`UPSTREAM_MODEL`), puedes
+configurar hasta 3 upstreams indexados (`UPSTREAM_1_*` … `UPSTREAM_3_*`), cada
+uno con su URL, su API key (formato bearer simple) y la lista de modelos que
+expone. El proxy enruta cada llamada por nombre de modelo al upstream correcto,
+lo que permite combinar Ollama/LM Studio locales con APIs remotas (OpenAI,
+Gemini, Claude) en un mismo run y debate.
+
 ## Configuración
 
 Todas las variables se leen del entorno (con soporte de `.env`). Se documentan
@@ -122,6 +148,11 @@ completas en [`.env.example`](.env.example):
 | `UPSTREAM_BASE_URL` | *(requerido)* | Base del upstream OpenAI-compatible (ej. Ollama: `http://127.0.0.1:11434/v1`, LM Studio: `http://127.0.0.1:1234/v1`, llama.cpp: `http://127.0.0.1:8080/v1`) |
 | `UPSTREAM_API_KEY` | `""` | API key del upstream (omitida si vacía) |
 | `UPSTREAM_MODEL` | *(requerido)* | Modelo por defecto del upstream (reenviado a menos que el request envíe `model`; también se anuncia en `GET /v1/models`) |
+| `UPSTREAM_{1..3}_BASE_URL` | `""` | Upstream indexado (alternativa/complemento al legado); si se define al menos el 1, se usan los indexados |
+| `UPSTREAM_{1..3}_MODELS` | `""` | Modelos que expone el upstream indexado (separados por coma) |
+| `UPSTREAM_{1..3}_API_KEY` | `""` | API key bearer del upstream indexado |
+| `DEBATE_ENABLED` | `false` | Activa el debate (speculum) sobre los resultados atómicos |
+| `DEBATE_ROUNDS` | `2` | Rondas de crítica+refinamiento (2-3) |
 | `MAX_DECOMPOSITION_DEPTH` | `3` | Profundidad máxima de descomposición |
 | `MAX_TOOL_ROUNDS_PER_PHASE` | `25` | Rondas de tools por fase (agotadas → responde texto) |
 | `REQUEST_TIMEOUT_SECONDS` | `120s` | Timeout por request al upstream |

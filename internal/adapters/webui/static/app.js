@@ -251,8 +251,9 @@ async function saveConfig(event) {
   const values = {};
   const form = new FormData(configForm);
   for (const [key, value] of form.entries()) {
-    if (key === "EXPOSE_REASONING_CONTENT") {
-      values[key] = configForm.elements[key].checked ? "true" : "false";
+    const el = configForm.elements[key];
+    if (el && el.type === "checkbox") {
+      values[key] = el.checked ? "true" : "false";
     } else if (key === "UPSTREAM_API_KEY") {
       const v = String(value || "").trim();
       if (v !== "") values[key] = v; // vacío = conservar la key actual

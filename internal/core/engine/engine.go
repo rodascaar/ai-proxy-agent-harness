@@ -99,6 +99,16 @@ type Options struct {
 	ToolChoice            json.RawMessage
 	MaxDecompositionDepth int
 	MaxToolRoundsPerPhase int
+	Debate                *DebateOptions
+}
+
+// DebateOptions activa el debate (speculum) sobre los resultados de las tareas
+// atómicas. Router es el puerto que enruta por modelo (nil = debate
+// desactivado). Rounds es el máximo de rondas de crítica+refinamiento.
+type DebateOptions struct {
+	Enabled bool
+	Rounds  int
+	Router  ports.LLMRouter
 }
 
 // Engine orquesta las tres fases de descomposición atómica. El estado de

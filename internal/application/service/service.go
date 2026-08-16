@@ -23,28 +23,49 @@ import (
 // Service encapsula el caso de uso del proxy.
 type Service struct {
 	client                ports.LLMClient
+	router                ports.LLMRouter
 	store                 session.Store
 	defaultModel          string
 	maxDecompositionDepth int
 	maxToolRoundsPerPhase int
+	debateEnabled         bool
+	debateRounds          int
 	logger                *slog.Logger
+}
+
+// Option configura el servicio (patrón functional options).
+type Option func(*Service)
+
+// WithDebate activa el speculum sobre los resultados atómicos. router es el
+// enrutador multi-modelo; si es nil, el debate queda desactivado.
+func WithDebate(enabled bool, rounds int, router ports.LLMRouter) Option {
+	return func(s *Service) {
+		s.debateEnabled = enabled
+		s.debateRounds = rounds
+		s.router = router
+	}
 }
 
 // New construye el servicio. defaultModel es el modelo a usar cuando el
 // request no trae uno; maxDecompositionDepth y maxToolRoundsPerPhase se pasan
 // al motor en cada run.
-func New(client ports.LLMClient, store session.Store, defaultModel string, maxDecompositionDepth, maxToolRoundsPerPhase int, logger *slog.Logger) *Service {
+func New(client ports.LLMClient, store session.Store, defaultModel string, maxDecompositionDepth, maxToolRoundsPerPhase int, logger *slog.Logger, opts ...Option) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{
+	s := &Service{
 		client:                client,
 		store:                 store,
 		defaultModel:          defaultModel,
 		maxDecompositionDepth: maxDecompositionDepth,
 		maxToolRoundsPerPhase: maxToolRoundsPerPhase,
+		debateRounds:          2,
 		logger:                logger,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // PreparedRun es un run ya resuelto y listo para consumirse. Cuando Lock no es
@@ -171,13 +192,7 @@ func (s *Service) Persist(run *PreparedRun, paused bool, finalContent string) er
 // está adquirido por Prepare.
 func (s *Service) buildResumeRun(state *session.State, messages []openai.Message, lock *sync.Mutex) *PreparedRun {
 	goalCtx := state.GoalCtx
-	eng := engine.New(s.client, engine.Options{
-		Model:                 state.Model,
-		Tools:                 state.Tools,
-		ToolChoice:            state.ToolChoice,
-		MaxDecompositionDepth: s.maxDecompositionDepth,
-		MaxToolRoundsPerPhase: s.maxToolRoundsPerPhase,
-	})
+	eng := engine.New(s.client, s.engineOptions(state.Model, state.Tools, state.ToolChoice))
 	eng.SetGoalContext(&goalCtx)
 	eng.RestoreTree(state.Root, state.Leaves, state.Results)
 	eng.RestorePending(state.PendingPhase, state.PendingLeafIndex, state.PendingToolCalls, state.PendingConversation, state.ToolRoundCount)
@@ -196,6 +211,26 @@ func (s *Service) buildResumeRun(state *session.State, messages []openai.Message
 	}
 }
 
+// engineOptions construye las opciones del motor, incluyendo el debate
+// (speculum) si está activado y hay un enrutador multi-modelo disponible.
+func (s *Service) engineOptions(model string, tools []openai.Tool, toolChoice json.RawMessage) engine.Options {
+	opts := engine.Options{
+		Model:                 model,
+		Tools:                 tools,
+		ToolChoice:            toolChoice,
+		MaxDecompositionDepth: s.maxDecompositionDepth,
+		MaxToolRoundsPerPhase: s.maxToolRoundsPerPhase,
+	}
+	if s.debateEnabled && s.router != nil {
+		opts.Debate = &engine.DebateOptions{
+			Enabled: true,
+			Rounds:  s.debateRounds,
+			Router:  s.router,
+		}
+	}
+	return opts
+}
+
 // prepareFreshOrNewTurn construye un run nuevo (fresco o turno nuevo sembrado
 // con turn_history) cuando no hay resume válido. state puede ser nil (sin
 // sesión) o una sesión ya completada. requestedModel es el modelo resuelto del
@@ -210,13 +245,7 @@ func (s *Service) prepareFreshOrNewTurn(req *openai.ChatCompletionRequest, messa
 	}
 
 	goalCtx := goal.Extract(req.Messages, priorContextOverride)
-	eng := engine.New(s.client, engine.Options{
-		Model:                 requestedModel,
-		Tools:                 req.Tools,
-		ToolChoice:            req.ToolChoice,
-		MaxDecompositionDepth: s.maxDecompositionDepth,
-		MaxToolRoundsPerPhase: s.maxToolRoundsPerPhase,
-	})
+	eng := engine.New(s.client, s.engineOptions(requestedModel, req.Tools, req.ToolChoice))
 	eng.SetGoalContext(&goalCtx)
 
 	return &PreparedRun{

@@ -14,7 +14,7 @@ import (
 func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"config":    s.cfg.Values(),
-		"apiKeySet": s.cfg.UpstreamAPIKey != "",
+		"apiKeySet": s.cfg.HasAPIKey(),
 	})
 }
 

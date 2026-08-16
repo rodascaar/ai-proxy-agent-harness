@@ -100,3 +100,22 @@ es una mejora de este proxy sobre el comportamiento base.
 - [x] Docs: `.env.example`, `README.md` (Web UI, detección dinámica, tabla de config)
 - [x] Tests: config, service (reenvío+fallback), upstream (ListModels/Probe), httpapi (config, UI, /v1/models) con `-race`
 
+## Fase 6 — Speculum: debate multi-modelo + self-refine
+
+- [x] `config`: `Upstreams []Upstream` (legado + indexado `UPSTREAM_{1..3}_*`)
+- [x] `config`: `DEBATE_ENABLED` (default false) y `DEBATE_ROUNDS` (2-3, default 2) + validación
+- [x] `config`: `DefaultModel()` y `HasAPIKey()`; `Values()` expone debate + upstreams
+- [x] `ports`: `LLMRouter` (ClientFor / AllModels / Probe + LLMClient + ModelLister)
+- [x] `adapters/router`: `Router` enruta por modelo (fallback legado al primer upstream)
+- [x] `prompts`: `refine_critic_{system,user}.md` y `refine_refine_{system,user}.md` (español)
+- [x] `core/debate`: `Debater.Refine` — crítica→refinamiento con marca `[APROBADA]` de convergencia
+- [x] `core/debate`: crítico = modelo distinto del primario si hay ≥2, si no self-refine
+- [x] `core/engine`: `Options.Debate` + `debateResult` aplicado a cada hoja atómica
+- [x] `core/engine`: el debate falla → conserva el resultado original (mejora, no dependencia)
+- [x] `service`: `WithDebate(enabled, rounds, router)` + `engineOptions` compartido fresh/resume
+- [x] `cmd/proxy`: construye el `Router` y cablea debate + `httpapi` con `DefaultModel()`
+- [x] `webui`: toggle `DEBATE_ENABLED` + input `DEBATE_ROUNDS` (checkbox genérico en `saveConfig`)
+- [x] Docs: `.env.example` (multi-upstream + debate), `README.md` (speculum, tabla de config)
+- [x] Tests: config (multi-upstream, debate), router (routing, probe, list), debate (self-refine, multi-model, límite de rondas), engine (debate activa/desactiva) con `-race`
+- [x] `gofmt` + `go vet` + `golangci-lint` limpios
+

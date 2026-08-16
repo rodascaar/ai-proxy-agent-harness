@@ -24,6 +24,10 @@ const (
 	SynthesisSystem      = "synthesis_system.md"
 	SynthesisUser        = "synthesis_user.md"
 	CallerSystemPreamble = "caller_system_preamble.md"
+	RefineCriticSystem   = "refine_critic_system.md"
+	RefineCriticUser     = "refine_critic_user.md"
+	RefineRefineSystem   = "refine_refine_system.md"
+	RefineRefineUser     = "refine_refine_user.md"
 )
 
 // Placeholders soportados por Render.
@@ -34,6 +38,8 @@ const (
 	PlaceholderTask         = "{task}"
 	PlaceholderContext      = "{context}"
 	PlaceholderCallerSystem = "{caller_system}"
+	PlaceholderResponse     = "{response}"
+	PlaceholderCritique     = "{critique}"
 )
 
 // Render lee el template indicado y sustituye sus placeholders. Los valores

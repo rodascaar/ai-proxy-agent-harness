@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"ai-proxy-agent-harness/internal/core/debate"
 	"ai-proxy-agent-harness/internal/core/openai"
 	"ai-proxy-agent-harness/internal/core/ports"
 	"ai-proxy-agent-harness/internal/core/task"
@@ -214,7 +215,7 @@ func (e *Engine) executeFrom(ctx context.Context, startIndex int, onEvent Handle
 		if result.paused {
 			return e.pausePhase(onEvent, PhaseLeaf, index, result)
 		}
-		e.recordLeafResult(leaf, result.text)
+		e.recordLeafResult(leaf, e.debateResult(ctx, leaf.Description, result.text, onEvent))
 	}
 	return false, nil
 }
@@ -263,8 +264,31 @@ func (e *Engine) resumePhase(ctx context.Context, toolOutputs map[string]string,
 	if phase != PhaseLeaf {
 		return false, nil // síntesis completada
 	}
-	e.recordLeafResult(e.leaves[index], result.text)
+	e.recordLeafResult(e.leaves[index], e.debateResult(ctx, e.leaves[index].Description, result.text, onEvent))
 	return e.executeFrom(ctx, index+1, onEvent)
+}
+
+// debateResult aplica el speculum sobre el resultado de una tarea atómica si
+// el debate está activado. Si está desactivado (o no hay router), devuelve el
+// texto sin cambios. Un error del debate NO aborta el run: conserva el texto
+// original (el debate es una mejora, no una dependencia crítica).
+func (e *Engine) debateResult(ctx context.Context, task, text string, onEvent Handler) string {
+	if e.opts.Debate == nil || !e.opts.Debate.Enabled || e.opts.Debate.Router == nil || text == "" {
+		return text
+	}
+	if err := emitReasoning(onEvent, "\n\n[Speculum] Someto el resultado a crítica y refinamiento.\n\n"); err != nil {
+		return text
+	}
+	debater := debate.New(e.opts.Debate.Router, e.opts.Model, e.opts.Debate.Rounds)
+	refined, err := debater.Refine(ctx, task, text, func(reasoning string) error {
+		return emitReasoning(onEvent, reasoning)
+	})
+	if err != nil {
+		// Conservamos el original y seguimos: el debate falló, no el run.
+		_ = emitReasoning(onEvent, "[Speculum] No se pudo completar el debate; se conserva el resultado original.\n\n")
+		return text
+	}
+	return refined
 }
 
 // recordLeafResult guarda el resultado de una hoja y lo agrega al contexto

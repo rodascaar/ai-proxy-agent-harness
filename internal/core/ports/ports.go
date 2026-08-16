@@ -54,3 +54,23 @@ type ModelLister interface {
 	// ListModels devuelve los modelos que el upstream anuncia, en orden.
 	ListModels(ctx context.Context) ([]openai.ModelDescriptor, error)
 }
+
+// LLMRouter enruta llamadas a múltiples upstreams por nombre de modelo. Es la
+// base del debate multi-modelo: con varios upstreams (locales y remotos) el
+// proxy puede pedirle a un modelo que critique el resultado de otro. Si solo
+// hay un modelo, ese mismo cubre todos los roles.
+type LLMRouter interface {
+	LLMClient
+	ModelLister
+
+	// ClientFor devuelve el cliente que sirve a un modelo concreto. Si el
+	// modelo no está declarado en ningún upstream, devuelve el cliente del
+	// primer upstream (comportamiento legado de passthrough).
+	ClientFor(model string) (LLMClient, error)
+
+	// AllModels devuelve los modelos disponibles en orden, sin duplicados.
+	AllModels() []string
+
+	// Probe verifica la conectividad con todos los upstreams (warmup).
+	Probe(ctx context.Context) error
+}

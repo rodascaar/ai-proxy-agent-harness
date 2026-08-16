@@ -37,6 +37,10 @@
         <label>API key <span class="set" id="key-badge" hidden>configurada</span>
           <input name="UPSTREAM_API_KEY" type="password" placeholder="(dejar vacío para conservar)" />
         </label>
+        <label class="toggle"><input name="DEBATE_ENABLED" type="checkbox" /> Debate multi-modelo (speculum)</label>
+        <label>Rondas de debate (2-3)
+          <input name="DEBATE_ROUNDS" type="number" min="2" max="3" />
+        </label>
         <label>Profundidad de descomposición
           <input name="MAX_DECOMPOSITION_DEPTH" type="number" min="1" max="10" />
         </label>

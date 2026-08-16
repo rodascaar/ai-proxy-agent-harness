@@ -58,7 +58,7 @@ func New(svc *service.Service, cfg *config.Config, lister ports.ModelLister, log
 	}
 	s := &Server{
 		service:         svc,
-		defaultModel:    cfg.UpstreamModel,
+		defaultModel:    cfg.DefaultModel(),
 		exposeReasoning: cfg.ExposeReasoningContent,
 		cfg:             cfg,
 		modelCache:      newModelCache(lister),

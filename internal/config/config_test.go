@@ -12,6 +12,10 @@ func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
 		"UPSTREAM_BASE_URL", "UPSTREAM_API_KEY", "UPSTREAM_MODEL",
+		"UPSTREAM_1_BASE_URL", "UPSTREAM_1_API_KEY", "UPSTREAM_1_MODELS",
+		"UPSTREAM_2_BASE_URL", "UPSTREAM_2_API_KEY", "UPSTREAM_2_MODELS",
+		"UPSTREAM_3_BASE_URL", "UPSTREAM_3_API_KEY", "UPSTREAM_3_MODELS",
+		"DEBATE_ENABLED", "DEBATE_ROUNDS",
 		"MAX_DECOMPOSITION_DEPTH", "MAX_TOOL_ROUNDS_PER_PHASE", "PROXY_HOST", "PROXY_PORT",
 		"REQUEST_TIMEOUT_SECONDS", "SESSION_TTL_SECONDS", "MAX_SESSIONS",
 		"EXPOSE_REASONING_CONTENT", "WARMUP_ON_START", "SESSIONS_DIR", "LOG_LEVEL",
@@ -178,6 +182,149 @@ func TestValuesOmitsAPIKey(t *testing.T) {
 	}
 	if values["UPSTREAM_MODEL"] != "qwen2.5:7b" {
 		t.Errorf("unexpected model value: %q", values["UPSTREAM_MODEL"])
+	}
+}
+
+func TestLoadMultiUpstream(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("UPSTREAM_1_BASE_URL", "http://127.0.0.1:11434/v1")
+	t.Setenv("UPSTREAM_1_MODELS", "qwen2.5:7b,llama3.2:3b")
+	t.Setenv("UPSTREAM_2_BASE_URL", "https://api.openai.com/v1")
+	t.Setenv("UPSTREAM_2_MODELS", "gpt-4o-mini")
+	t.Setenv("UPSTREAM_2_API_KEY", "sk-openai")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if len(cfg.Upstreams) != 2 {
+		t.Fatalf("expected 2 upstreams, got %d", len(cfg.Upstreams))
+	}
+	if cfg.Upstreams[0].BaseURL != "http://127.0.0.1:11434/v1" {
+		t.Errorf("unexpected upstream 1 url: %q", cfg.Upstreams[0].BaseURL)
+	}
+	if len(cfg.Upstreams[0].Models) != 2 || cfg.Upstreams[0].Models[0] != "qwen2.5:7b" || cfg.Upstreams[0].Models[1] != "llama3.2:3b" {
+		t.Errorf("unexpected upstream 1 models: %v", cfg.Upstreams[0].Models)
+	}
+	if cfg.Upstreams[1].APIKey != "sk-openai" {
+		t.Errorf("expected upstream 2 api key, got %q", cfg.Upstreams[1].APIKey)
+	}
+	if got := cfg.DefaultModel(); got != "qwen2.5:7b" {
+		t.Errorf("expected default model qwen2.5:7b, got %q", got)
+	}
+}
+
+func TestLoadLegacyFallsBackToSingleUpstream(t *testing.T) {
+	clearEnv(t)
+	setRequired(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if len(cfg.Upstreams) != 1 {
+		t.Fatalf("expected 1 upstream from legacy config, got %d", len(cfg.Upstreams))
+	}
+	if cfg.Upstreams[0].BaseURL != "http://localhost:11434/v1" {
+		t.Errorf("unexpected legacy url: %q", cfg.Upstreams[0].BaseURL)
+	}
+	if len(cfg.Upstreams[0].Models) != 1 || cfg.Upstreams[0].Models[0] != "qwen2.5:7b" {
+		t.Errorf("unexpected legacy models: %v", cfg.Upstreams[0].Models)
+	}
+}
+
+func TestLoadMultiUpstreamIgnoresEmptySlots(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("UPSTREAM_1_BASE_URL", "http://127.0.0.1:11434/v1")
+	t.Setenv("UPSTREAM_1_MODELS", "qwen2.5:7b")
+	t.Setenv("UPSTREAM_3_BASE_URL", "http://127.0.0.1:9999/v1")
+	t.Setenv("UPSTREAM_3_MODELS", "otro:modelo")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if len(cfg.Upstreams) != 2 {
+		t.Fatalf("expected 2 upstreams (slot 2 empty), got %d", len(cfg.Upstreams))
+	}
+}
+
+func TestLoadUpstreamWithoutModels(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("UPSTREAM_1_BASE_URL", "http://127.0.0.1:11434/v1")
+	if _, err := Load(); err == nil {
+		t.Fatalf("expected error when upstream has no models")
+	}
+}
+
+func TestLoadNoUpstream(t *testing.T) {
+	clearEnv(t)
+	if _, err := Load(); err == nil {
+		t.Fatalf("expected error when no upstream is configured")
+	}
+}
+
+func TestLoadDebateDefaults(t *testing.T) {
+	clearEnv(t)
+	setRequired(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.DebateEnabled {
+		t.Errorf("debate should be disabled by default")
+	}
+	if cfg.DebateRounds != 2 {
+		t.Errorf("expected 2 debate rounds by default, got %d", cfg.DebateRounds)
+	}
+}
+
+func TestLoadDebateOverrides(t *testing.T) {
+	clearEnv(t)
+	setRequired(t)
+	t.Setenv("DEBATE_ENABLED", "true")
+	t.Setenv("DEBATE_ROUNDS", "3")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.DebateEnabled {
+		t.Errorf("debate should be enabled")
+	}
+	if cfg.DebateRounds != 3 {
+		t.Errorf("expected 3 debate rounds, got %d", cfg.DebateRounds)
+	}
+}
+
+func TestLoadInvalidDebateRounds(t *testing.T) {
+	clearEnv(t)
+	setRequired(t)
+	t.Setenv("DEBATE_ROUNDS", "5")
+	if _, err := Load(); err == nil {
+		t.Fatalf("expected error for out-of-range debate rounds")
+	}
+}
+
+func TestValuesIncludesDebateAndUpstreams(t *testing.T) {
+	clearEnv(t)
+	setRequired(t)
+	t.Setenv("DEBATE_ENABLED", "true")
+	t.Setenv("DEBATE_ROUNDS", "3")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	values := cfg.Values()
+	if values["DEBATE_ENABLED"] != "true" {
+		t.Errorf("unexpected debate enabled value: %q", values["DEBATE_ENABLED"])
+	}
+	if values["DEBATE_ROUNDS"] != "3" {
+		t.Errorf("unexpected debate rounds value: %q", values["DEBATE_ROUNDS"])
+	}
+	if values["UPSTREAM_1_BASE_URL"] != "http://localhost:11434/v1" {
+		t.Errorf("unexpected upstream 1 url value: %q", values["UPSTREAM_1_BASE_URL"])
+	}
+	if values["UPSTREAM_1_MODELS"] != "qwen2.5:7b" {
+		t.Errorf("unexpected upstream 1 models value: %q", values["UPSTREAM_1_MODELS"])
 	}
 }
 

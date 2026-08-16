@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"ai-proxy-agent-harness/internal/adapters/httpapi"
+	"ai-proxy-agent-harness/internal/adapters/router"
 	"ai-proxy-agent-harness/internal/adapters/sessionstore/md"
-	"ai-proxy-agent-harness/internal/adapters/upstream"
 	"ai-proxy-agent-harness/internal/application/service"
 	"ai-proxy-agent-harness/internal/config"
 )
@@ -33,12 +33,14 @@ func main() {
 		logger.Error("initializing session store", "err", err)
 		os.Exit(1)
 	}
-	client := upstream.New(cfg.UpstreamBaseURL, cfg.UpstreamAPIKey, cfg.RequestTimeout)
-	svc := service.New(client, store, cfg.UpstreamModel, cfg.MaxDecompositionDepth, cfg.MaxToolRoundsPerPhase, logger)
-	handler := httpapi.New(svc, cfg, client, logger)
+	r := router.New(cfg.Upstreams, cfg.RequestTimeout)
+	svc := service.New(r, store, cfg.DefaultModel(), cfg.MaxDecompositionDepth, cfg.MaxToolRoundsPerPhase, logger,
+		service.WithDebate(cfg.DebateEnabled, cfg.DebateRounds, r),
+	)
+	handler := httpapi.New(svc, cfg, r, logger)
 
 	if cfg.WarmupOnStart {
-		warmup(client, cfg, logger)
+		warmup(r, cfg, logger)
 	}
 
 	httpServer := &http.Server{
@@ -48,7 +50,7 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("proxy listening", "addr", cfg.Addr(), "model", cfg.UpstreamModel)
+		logger.Info("proxy listening", "addr", cfg.Addr(), "model", cfg.DefaultModel(), "debate", cfg.DebateEnabled)
 		errCh <- httpServer.ListenAndServe()
 	}()
 
@@ -75,8 +77,10 @@ func main() {
 
 // warmup verifica la conectividad con el upstream antes de servir tráfico,
 // con un timeout acotado. Si falla, solo se loguea un warning: no aborta.
-func warmup(client *upstream.Client, cfg *config.Config, logger *slog.Logger) {
-	logger.Info("warming up upstream", "url", cfg.UpstreamBaseURL, "model", cfg.UpstreamModel)
+func warmup(client interface {
+	Probe(ctx context.Context) error
+}, cfg *config.Config, logger *slog.Logger) {
+	logger.Info("warming up upstream", "url", cfg.UpstreamBaseURL, "model", cfg.DefaultModel())
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := client.Probe(ctx); err != nil {

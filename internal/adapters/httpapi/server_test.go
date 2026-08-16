@@ -37,6 +37,7 @@ func newTestServer(t *testing.T, llm *fakellm.Fake, exposeReasoning bool) (http.
 		UpstreamModel:          "test-model",
 		MaxDecompositionDepth:  3,
 		MaxToolRoundsPerPhase:  25,
+		DebateRounds:           2,
 		ProxyPort:              8000,
 		RequestTimeout:         time.Minute,
 		SessionTTL:             time.Minute,
