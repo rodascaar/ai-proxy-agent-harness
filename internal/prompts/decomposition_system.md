@@ -30,12 +30,12 @@ genuinamente independientes entre sí, no por el simple hecho de que la respuest
 
 <ejemplos>
 <ejemplo>
-<tarea_a_evaluar>Escribe una función en Python que valide si un correo electrónico tiene formato válido</tarea_a_evaluar>
+<tarea_a_evaluar>Responde cuál es la capital de Francia</tarea_a_evaluar>
 Salida esperada: {"atomic": true, "subtasks": []}
 </ejemplo>
 <ejemplo>
-<tarea_a_evaluar>Escribe una función en Python que sume dos números y una prueba unitaria para esa función</tarea_a_evaluar>
-Salida esperada: {"atomic": false, "subtasks": ["Escribir la función en Python que sume dos números", "Escribir una prueba unitaria que verifique esa función"]}
+<tarea_a_evaluar>Escribe la letra de una canción infantil y propón tres títulos para ella</tarea_a_evaluar>
+Salida esperada: {"atomic": false, "subtasks": ["Escribir la letra de la canción infantil", "Proponer tres títulos para la canción"]}
 </ejemplo>
 <ejemplo>
 <herramientas_disponibles>get_weather: Devuelve el clima actual de una ciudad dada</herramientas_disponibles>

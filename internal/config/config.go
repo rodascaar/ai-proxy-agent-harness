@@ -37,6 +37,7 @@ const (
 	defaultLogLevel              = "info"
 	defaultDebateRounds          = 2
 	defaultMaxUpstreams          = 3
+	defaultTemperature           = 0.3
 )
 
 // EnvFile es el nombre del archivo .env que lee el proxy y que edita la UI.
@@ -77,6 +78,7 @@ var ConfigKeys = []string{
 	"EXPOSE_REASONING_CONTENT",
 	"WARMUP_ON_START",
 	"LOG_LEVEL",
+	"TEMPERATURE",
 }
 
 // Upstream describe un upstream OpenAI-compatible: su URL base, la API key
@@ -109,6 +111,7 @@ type Config struct {
 	WarmupOnStart          bool
 	SessionsDir            string
 	LogLevel               slog.Level
+	Temperature            float64
 }
 
 // DefaultModel devuelve el modelo por defecto del primer upstream (o el
@@ -193,6 +196,7 @@ func (c *Config) Values() map[string]string {
 		"EXPOSE_REASONING_CONTENT":  strconv.FormatBool(c.ExposeReasoningContent),
 		"WARMUP_ON_START":           strconv.FormatBool(c.WarmupOnStart),
 		"LOG_LEVEL":                 strings.ToLower(c.LogLevel.String()),
+		"TEMPERATURE":               strconv.FormatFloat(c.Temperature, 'f', -1, 64),
 	}
 	for index, upstream := range c.Upstreams {
 		n := index + 1
@@ -266,6 +270,17 @@ func build(get func(string) (string, bool)) (*Config, error) {
 			return 0, fmt.Errorf("invalid %s=%q: must be debug, info, warn or error", key, raw)
 		}
 	}
+	float := func(key string, fallback float64) (float64, error) {
+		raw, ok := get(key)
+		if !ok || raw == "" {
+			return fallback, nil
+		}
+		v, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid %s=%q: must be a number", key, raw)
+		}
+		return v, nil
+	}
 
 	maxDepth, err := num("MAX_DECOMPOSITION_DEPTH", defaultMaxDecompositionDepth)
 	if err != nil {
@@ -311,6 +326,10 @@ func build(get func(string) (string, bool)) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	temperature, err := float("TEMPERATURE", defaultTemperature)
+	if err != nil {
+		return nil, err
+	}
 
 	upstreams := resolveUpstreams(get)
 	cfg := &Config{
@@ -331,6 +350,7 @@ func build(get func(string) (string, bool)) (*Config, error) {
 		WarmupOnStart:          warmup,
 		SessionsDir:            str("SESSIONS_DIR", defaultSessionsDir),
 		LogLevel:               level,
+		Temperature:            temperature,
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -449,6 +469,9 @@ func (c *Config) validate() error {
 	}
 	if c.MaxSessions < 1 {
 		return errors.New("invalid config: max sessions must be >= 1")
+	}
+	if c.Temperature < 0 || c.Temperature > 1 {
+		return fmt.Errorf("invalid config: temperature %.2f out of range [0, 1]", c.Temperature)
 	}
 	if strings.TrimSpace(c.SessionsDir) == "" {
 		return errors.New("invalid config: sessions dir must not be empty")

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"ai-proxy-agent-harness/internal/core/content"
@@ -100,7 +101,42 @@ type Options struct {
 	MaxDecompositionDepth int
 	MaxToolRoundsPerPhase int
 	Debate                *DebateOptions
+	// Temperature es la temperatura de muestreo para las fases de ejecución y
+	// síntesis (0-1, típicamente 0.3 para salida enfocada). La descomposición
+	// usa SIEMPRE una temperatura baja fija (decompositionTemperature), porque
+	// su salida es JSON estricto. 0 queda como está (greedy, determinista).
+	Temperature float64
+	// MaxOutputTokens acota la salida de cada llamada al upstream. Un límite
+	// generoso evita que un modelo local siga generando tokens extra y sin
+	// sentido tras completar la respuesta. 0 usa el default del motor.
+	MaxOutputTokens int
+	// Logger opcional para observabilidad del motor (tamaño de prompts por
+	// fase). Si es nil se usa slog.Default().
+	Logger *slog.Logger
 }
+
+// Temperaturas y límites de sampling del motor (números mágicos centralizados).
+const (
+	// decompositionTemperature es la temperatura fija de la Fase 1: su salida
+	// es JSON estricto con response_format, por lo que siempre se muestrea frío.
+	decompositionTemperature = 0.2
+	// defaultMaxOutputTokens es el límite de salida por defecto (4096). Es
+	// generoso: no trunca código legítimo, pero frena la deriva de modelos
+	// chicos que tienden a seguir generando sin relación con la tarea.
+	defaultMaxOutputTokens = 4096
+)
+
+// Presupuestos de contexto del motor. Los modelos locales chicos (4k-16k) se
+// desenfocan con contextos largos: podar el historial previo y los resultados
+// acumulados mantiene la atención en la tarea actual.
+const (
+	// maxPriorContextRunes es el tope del historial previo (cabeza+cola).
+	maxPriorContextRunes = 12000
+	// maxResultsContextRunes es el tope del contexto acumulado de resultados.
+	maxResultsContextRunes = 12000
+	// contextTruncationMarker marca el punto donde se omitió contexto.
+	contextTruncationMarker = "\n[... contexto omitido para no saturar el modelo ...]\n"
+)
 
 // DebateOptions activa el debate (speculum) sobre los resultados de las tareas
 // atómicas. Router es el puerto que enruta por modelo (nil = debate
@@ -139,8 +175,57 @@ func New(llm ports.LLMClient, opts Options) *Engine {
 	if opts.MaxToolRoundsPerPhase < 1 {
 		opts.MaxToolRoundsPerPhase = 1
 	}
+	if opts.MaxOutputTokens < 1 {
+		opts.MaxOutputTokens = defaultMaxOutputTokens
+	}
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
+	}
 	return &Engine{llm: llm, opts: opts}
 }
+
+// logPromptSizes registra en debug el tamaño de system+user de una fase, para
+// medir cuánto contexto consume cada llamada interna (observabilidad).
+func (e *Engine) logPromptSizes(phase string, system, user string) {
+	e.opts.Logger.Debug("prompt sizes",
+		"phase", phase,
+		"system_runes", len(system),
+		"user_runes", len(user),
+		"total_runes", len(system)+len(user),
+	)
+}
+
+// trimContext acota un texto largo a maxRunes conservando cabeza y cola, con
+// un marcador en medio. Si el texto entra en el presupuesto, se devuelve
+// intacto. Usa runas (no bytes) para respetar caracteres multibyte.
+func trimContext(text string, maxRunes int) string {
+	if maxRunes <= 0 || len([]rune(text)) <= maxRunes {
+		return text
+	}
+	runes := []rune(text)
+	half := maxRunes / 2
+	head := string(runes[:half])
+	tail := string(runes[len(runes)-half:])
+	return head + contextTruncationMarker + tail
+}
+
+// sampling devuelve los punteros de sampling para una llamada interna. El
+// motor SIEMPRE envía un límite de salida; la temperatura es la configurada
+// (0 = greedy, se envía tal cual).
+func (e *Engine) sampling() (*float64, *int) {
+	maxTokens := e.opts.MaxOutputTokens
+	return float64Ptr(e.opts.Temperature), &maxTokens
+}
+
+// decompositionSampling devuelve el sampling fijo de la Fase 1 (temperatura
+// fría para JSON estricto + límite de salida).
+func (e *Engine) decompositionSampling() (*float64, *int) {
+	temp := decompositionTemperature
+	maxTokens := e.opts.MaxOutputTokens
+	return &temp, &maxTokens
+}
+
+func float64Ptr(v float64) *float64 { return &v }
 
 // SetGoalContext fija el contexto del turno externo antes de Run() o Resume().
 func (e *Engine) SetGoalContext(ctx *goal.Context) {

@@ -24,11 +24,13 @@ type fakeResponse struct {
 // recordedRequest es el payload de una llamada al LLM fake, para inspección
 // en los tests.
 type recordedRequest struct {
-	stream     bool
-	messages   []openai.Message
-	jsonMode   bool
-	tools      []openai.Tool
-	toolChoice json.RawMessage
+	stream      bool
+	messages    []openai.Message
+	jsonMode    bool
+	tools       []openai.Tool
+	toolChoice  json.RawMessage
+	temperature *float64
+	maxTokens   *int
 }
 
 // fakeLLM implementa ports.LLMClient con una cola de respuestas programadas.
@@ -64,10 +66,12 @@ func (f *fakeLLM) Complete(ctx context.Context, req ports.CompleteRequest) (stri
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.record(recordedRequest{
-		messages:   req.Messages,
-		jsonMode:   req.JSONMode,
-		tools:      req.Tools,
-		toolChoice: req.ToolChoice,
+		messages:    req.Messages,
+		jsonMode:    req.JSONMode,
+		tools:       req.Tools,
+		toolChoice:  req.ToolChoice,
+		temperature: req.Temperature,
+		maxTokens:   req.MaxTokens,
 	})
 	response, err := f.pop()
 	if err != nil {
@@ -83,10 +87,12 @@ func (f *fakeLLM) Complete(ctx context.Context, req ports.CompleteRequest) (stri
 func (f *fakeLLM) Stream(ctx context.Context, req ports.StreamRequest, onChunk func(ports.StreamChunk) error) error {
 	f.mu.Lock()
 	f.record(recordedRequest{
-		stream:     true,
-		messages:   req.Messages,
-		tools:      req.Tools,
-		toolChoice: req.ToolChoice,
+		stream:      true,
+		messages:    req.Messages,
+		tools:       req.Tools,
+		toolChoice:  req.ToolChoice,
+		temperature: req.Temperature,
+		maxTokens:   req.MaxTokens,
 	})
 	response, err := f.pop()
 	f.mu.Unlock()

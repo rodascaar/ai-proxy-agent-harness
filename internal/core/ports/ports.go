@@ -17,6 +17,12 @@ type CompleteRequest struct {
 	JSONMode   bool
 	Tools      []openai.Tool
 	ToolChoice json.RawMessage
+	// Sampling control opcional (nil/0 = default del upstream). Para modelos
+	// locales chicos, una temperatura baja y un max_tokens acotado evitan que
+	// la generación derive fuera de tema o produzca tokens extra sin sentido.
+	Temperature *float64
+	MaxTokens   *int
+	Stop        []string
 }
 
 // StreamRequest describe una llamada streaming al upstream.
@@ -25,6 +31,10 @@ type StreamRequest struct {
 	Messages   []openai.Message
 	Tools      []openai.Tool
 	ToolChoice json.RawMessage
+	// Sampling control opcional (misma motivación que en CompleteRequest).
+	Temperature *float64
+	MaxTokens   *int
+	Stop        []string
 }
 
 // StreamChunk es un fragmento de respuesta del upstream durante el streaming.

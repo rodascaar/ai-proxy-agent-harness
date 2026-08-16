@@ -158,7 +158,9 @@ var decompositionSchema = map[string]interface{}{
 }
 
 // chatPayload es el cuerpo del POST al upstream. Stream se serializa
-// explícitamente (true/false) para no depender de defaults ajenos.
+// explícitamente (true/false) para no depender de defaults ajenos. Los campos
+// de sampling (temperature, max_tokens, stop) son opcionales: solo se envían
+// cuando el motor los pide, para no pisar los defaults del servidor.
 type chatPayload struct {
 	Model          string            `json:"model"`
 	Messages       []openai.Message  `json:"messages"`
@@ -166,6 +168,9 @@ type chatPayload struct {
 	ResponseFormat *jsonSchemaFormat `json:"response_format,omitempty"`
 	Tools          []openai.Tool     `json:"tools,omitempty"`
 	ToolChoice     json.RawMessage   `json:"tool_choice,omitempty"`
+	Temperature    *float64          `json:"temperature,omitempty"`
+	MaxTokens      *int              `json:"max_tokens,omitempty"`
+	Stop           []string          `json:"stop,omitempty"`
 }
 
 // do ejecuta una petición POST y devuelve la respuesta ya verificada (2xx).
@@ -200,6 +205,14 @@ func (c *Client) do(ctx context.Context, payload chatPayload) (*http.Response, e
 	return resp, nil
 }
 
+// applySampling copia los campos de sampling opcionales al payload cuando el
+// motor los pide. Se usa en Complete y Stream para no duplicar la asignación.
+func applySampling(payload *chatPayload, temperature *float64, maxTokens *int, stop []string) {
+	payload.Temperature = temperature
+	payload.MaxTokens = maxTokens
+	payload.Stop = stop
+}
+
 // Complete hace una llamada no-streaming y devuelve el contenido de texto de
 // la respuesta (o "" si el mensaje no trae content).
 func (c *Client) Complete(ctx context.Context, req ports.CompleteRequest) (string, error) {
@@ -210,6 +223,7 @@ func (c *Client) Complete(ctx context.Context, req ports.CompleteRequest) (strin
 		Tools:      req.Tools,
 		ToolChoice: req.ToolChoice,
 	}
+	applySampling(&payload, req.Temperature, req.MaxTokens, req.Stop)
 	if req.JSONMode {
 		payload.ResponseFormat = &jsonSchemaFormat{
 			Type: "json_schema",
@@ -252,6 +266,7 @@ func (c *Client) Stream(ctx context.Context, req ports.StreamRequest, onChunk fu
 		Tools:      req.Tools,
 		ToolChoice: req.ToolChoice,
 	}
+	applySampling(&payload, req.Temperature, req.MaxTokens, req.Stop)
 
 	resp, err := c.do(ctx, payload)
 	if err != nil {

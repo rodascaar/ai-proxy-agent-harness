@@ -43,11 +43,19 @@ func (e *Engine) runPhase(ctx context.Context, system, userText string, emitKind
 	resultParts := make([]string, 0, 8)
 	toolCallAcc := map[int]*openai.ToolCall{}
 
+	phaseLabel := "synthesis"
+	if emitKind == EventReasoning {
+		phaseLabel = "leaf"
+	}
+	e.logPromptSizes(phaseLabel, system, userText)
+	temp, maxTokens := e.sampling()
 	err := e.llm.Stream(ctx, ports.StreamRequest{
-		Model:      e.opts.Model,
-		Messages:   messages,
-		Tools:      phaseTools,
-		ToolChoice: phaseToolChoice,
+		Model:       e.opts.Model,
+		Messages:    messages,
+		Tools:       phaseTools,
+		ToolChoice:  phaseToolChoice,
+		Temperature: temp,
+		MaxTokens:   maxTokens,
 	}, func(chunk ports.StreamChunk) error {
 		if piece := chunk.Delta.Content; piece != nil && *piece != "" {
 			resultParts = append(resultParts, *piece)
@@ -166,12 +174,15 @@ func (e *Engine) synthesisPhaseInputs() (string, string, error) {
 	return system, userText, nil
 }
 
-// resultsContext une los resultados ya calculados como contexto acumulado.
+// resultsContext une los resultados ya calculados como contexto acumulado,
+// podado a un presupuesto total (cabeza+cola) para que una larga cadena de
+// hojas no haga perder el foco al modelo.
 func (e *Engine) resultsContext(empty string) string {
 	if len(e.results) == 0 {
 		return empty
 	}
-	return strings.Join(e.results, "\n")
+	joined := strings.Join(e.results, "\n")
+	return trimContext(joined, maxResultsContextRunes)
 }
 
 // executeTree inicia la Fase 2: ejecuta las hojas atómicas del árbol.
@@ -280,6 +291,8 @@ func (e *Engine) debateResult(ctx context.Context, task, text string, onEvent Ha
 		return text
 	}
 	debater := debate.New(e.opts.Debate.Router, e.opts.Model, e.opts.Debate.Rounds)
+	temp, maxTokens := e.sampling()
+	debater.WithSampling(temp, maxTokens)
 	refined, err := debater.Refine(ctx, task, text, func(reasoning string) error {
 		return emitReasoning(onEvent, reasoning)
 	})

@@ -120,6 +120,63 @@ func TestCompleteJSONMode(t *testing.T) {
 	}
 }
 
+// TestSamplingPassthrough verifica que temperature, max_tokens y stop se
+// envíen al upstream cuando el motor los pide, y que se omitan si no.
+func TestSamplingPassthrough(t *testing.T) {
+	t.Run("complete forwards sampling", func(t *testing.T) {
+		var received chatPayload
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &received)
+			_, _ = io.WriteString(w, `{"id":"1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"}}]}`)
+		}))
+		defer server.Close()
+
+		client := New(server.URL, "", 5*time.Second)
+		temp, maxTokens := 0.2, 4096
+		if _, err := client.Complete(context.Background(), ports.CompleteRequest{
+			Model:       "m",
+			Messages:    []openai.Message{{Role: openai.RoleUser, Content: openai.NewTextContent("x")}},
+			Temperature: &temp,
+			MaxTokens:   &maxTokens,
+			Stop:        []string{"\n"},
+		}); err != nil {
+			t.Fatalf("Complete() error: %v", err)
+		}
+		if received.Temperature == nil || *received.Temperature != 0.2 {
+			t.Errorf("expected temperature 0.2, got %v", received.Temperature)
+		}
+		if received.MaxTokens == nil || *received.MaxTokens != 4096 {
+			t.Errorf("expected max_tokens 4096, got %v", received.MaxTokens)
+		}
+		if len(received.Stop) != 1 || received.Stop[0] != "\n" {
+			t.Errorf("expected stop [\\n], got %#v", received.Stop)
+		}
+	})
+
+	t.Run("stream omits sampling when unset", func(t *testing.T) {
+		var received chatPayload
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &received)
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		}))
+		defer server.Close()
+
+		client := New(server.URL, "", 5*time.Second)
+		if err := client.Stream(context.Background(), ports.StreamRequest{
+			Model:    "m",
+			Messages: []openai.Message{{Role: openai.RoleUser, Content: openai.NewTextContent("x")}},
+		}, func(ports.StreamChunk) error { return nil }); err != nil {
+			t.Fatalf("Stream() error: %v", err)
+		}
+		if received.Temperature != nil || received.MaxTokens != nil || len(received.Stop) != 0 {
+			t.Errorf("expected sampling omitted, got temperature=%v max_tokens=%v stop=%#v", received.Temperature, received.MaxTokens, received.Stop)
+		}
+	})
+}
+
 func TestCompleteWithoutAPIKeyOmitsAuthorization(t *testing.T) {
 	var gotAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -21,11 +21,13 @@ type fakeRouter struct {
 type fakeClient struct {
 	mu        sync.Mutex
 	responses []string
+	reqs      []ports.CompleteRequest
 }
 
 func (f *fakeClient) Complete(ctx context.Context, req ports.CompleteRequest) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.reqs = append(f.reqs, req)
 	if len(f.responses) == 0 {
 		return "", nil
 	}
@@ -167,5 +169,32 @@ func TestRefineStopsAtMaxRounds(t *testing.T) {
 	}
 	if got != "r2" {
 		t.Errorf("expected result after 2 rounds (r2), got %q", got)
+	}
+}
+
+// TestWithSamplingPropagates verifica que la temperatura y el límite de salida
+// configurados con WithSampling lleguen a todas las llamadas del debate.
+func TestWithSamplingPropagates(t *testing.T) {
+	r := newFakeRouter([]string{"m1"}, map[string][]string{
+		"m1": {ApprovedMarker},
+	})
+	temp, maxTokens := 0.1, 2048
+	d := New(r, "m1", 2).WithSampling(&temp, &maxTokens)
+
+	if _, err := d.Refine(context.Background(), "tarea", "inicial", nil); err != nil {
+		t.Fatalf("Refine() error: %v", err)
+	}
+
+	client := r.clients["m1"]
+	if len(client.reqs) == 0 {
+		t.Fatalf("expected at least one upstream call")
+	}
+	for index, req := range client.reqs {
+		if req.Temperature == nil || *req.Temperature != 0.1 {
+			t.Errorf("request %d: expected temperature 0.1, got %v", index, req.Temperature)
+		}
+		if req.MaxTokens == nil || *req.MaxTokens != 2048 {
+			t.Errorf("request %d: expected max_tokens 2048, got %v", index, req.MaxTokens)
+		}
 	}
 }

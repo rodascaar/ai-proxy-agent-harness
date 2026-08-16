@@ -12,6 +12,14 @@ hay — no contradigas ni reinterpretes turnos anteriores ya resueltos. Presént
 directamente, de una sola vez: no menciones el proceso de descomposición ni la existencia de tareas atómicas.
 </instrucciones>
 
+<disciplina_de_consolidacion>
+La respuesta final responde ÚNICAMENTE al <objetivo>:
+- Si el objetivo no pide código, entrega la respuesta en texto o datos, sin escribir código.
+- No incluyas ni repitas contenido ajeno al objetivo, aunque aparezca en <resultados_tareas> o en
+  <historial_conversacion>: consolida solo lo que responda al objetivo y descarta lo irrelevante.
+- No agregues secciones, ejemplos ni material adicional que el objetivo no solicite.
+</disciplina_de_consolidacion>
+
 <pendientes_marcados>
 Si dentro de <resultados_tareas> aparece una línea con el formato [[NECESITA_HERRAMIENTA: descripción]], esa
 subtarea no se completó porque requiere una acción externa real (leer/escribir un archivo, ejecutar algo,

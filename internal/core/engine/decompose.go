@@ -50,13 +50,18 @@ func (e *Engine) decomposeNode(ctx context.Context, node *task.Node, onEvent Han
 		return err
 	}
 
+	e.logPromptSizes("decomposition", system, userText)
+
+	temp, maxTokens := e.decompositionSampling()
 	raw, err := e.llm.Complete(ctx, ports.CompleteRequest{
 		Model: e.opts.Model,
 		Messages: []openai.Message{
 			{Role: openai.RoleSystem, Content: messageContent(system)},
 			{Role: openai.RoleUser, Content: e.buildUserContent(userText)},
 		},
-		JSONMode: true,
+		JSONMode:    true,
+		Temperature: temp,
+		MaxTokens:   maxTokens,
 	})
 	if err != nil {
 		return fmt.Errorf("decomposing node: %w", err)
@@ -88,10 +93,11 @@ func (e *Engine) decomposeNode(ctx context.Context, node *task.Node, onEvent Han
 }
 
 // priorContextOrDefault devuelve el contexto previo o un marcador cuando no
-// existe, para que los templates lean de forma estable.
+// existe, para que los templates lean de forma estable. El contexto previo se
+// poda a un presupuesto (cabeza+cola) para no saturar a modelos locales chicos.
 func (e *Engine) priorContextOrDefault() string {
 	if e.goalCtx.PriorContext == "" {
 		return "(sin contexto previo)"
 	}
-	return e.goalCtx.PriorContext
+	return trimContext(e.goalCtx.PriorContext, maxPriorContextRunes)
 }

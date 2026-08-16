@@ -140,3 +140,21 @@ es una mejora de este proxy sobre el comportamiento base.
 - [x] Docs: README (ejemplos 1 servidor con 2 modelos y 2 servidores locales, endpoint detect-models), `.env.example` (CSV + nota Detectar)
 - [x] `gofmt` + `go vet` + `golangci-lint` + `go test -race ./...` limpios
 
+## Fase 9 — Calidad de respuestas en modelos locales chicos
+
+- [x] `ports`: `Temperature`, `MaxTokens` y `Stop` en `CompleteRequest`/`StreamRequest`
+- [x] `upstream`: `chatPayload` envía sampling (`temperature`/`max_tokens`/`stop`, omitidos si no se piden)
+- [x] `config`: `TEMPERATURE` (0-1, default 0.3, fail-fast si inválida) + `Values()`
+- [x] `service`: `WithTemperature` + cableado a `engineOptions`
+- [x] `engine`: `Options.Temperature/MaxOutputTokens/Logger`; default `max_tokens=4096`
+- [x] `engine`: descomposición siempre a temperatura fija `0.2` (JSON estable)
+- [x] `engine`: poda del contexto previo y de `resultsContext` a 12k runes (cabeza+cola con marcador) — no satura ventanas chicas
+- [x] `engine`: logging de tamaños de prompt por fase (`logPromptSizes`)
+- [x] `debate`: `WithSampling` propaga temperatura/`max_tokens` a crítica y refinamiento
+- [x] `prompts`: bloque `<disciplina_de_salida>` en ejecución atómica (solo lo que pide la tarea, sin código si no se pide, sin ejemplos extra, ignorar contexto irrelevante)
+- [x] `prompts`: `<disciplina_de_consolidacion>` en síntesis (responder solo al objetivo, descartar contenido irrelevante)
+- [x] `prompts`: ejemplos de descomposición/ejecución neutralizados (sin anclaje Python/email)
+- [x] Tests: upstream (sampling passthrough), config (`TEMPERATURE`), engine (sampling por fase, default max_tokens, poda), debate (`WithSampling`) con `-race`
+- [x] Docs: `.env.example` (TEMPERATURE), `README.md` (tabla + nota de enfoque), este checklist
+- [x] `gofmt` + `go vet` + `golangci-lint` + `go test -race ./...` limpios
+

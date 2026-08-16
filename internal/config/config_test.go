@@ -19,6 +19,7 @@ func clearEnv(t *testing.T) {
 		"MAX_DECOMPOSITION_DEPTH", "MAX_TOOL_ROUNDS_PER_PHASE", "PROXY_HOST", "PROXY_PORT",
 		"REQUEST_TIMEOUT_SECONDS", "SESSION_TTL_SECONDS", "MAX_SESSIONS",
 		"EXPOSE_REASONING_CONTENT", "WARMUP_ON_START", "SESSIONS_DIR", "LOG_LEVEL",
+		"TEMPERATURE",
 	} {
 		t.Setenv(key, "")
 	}
@@ -165,6 +166,45 @@ func TestLoadInvalidLogLevel(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "trace")
 	if _, err := Load(); err == nil {
 		t.Fatalf("expected error for invalid log level")
+	}
+}
+
+func TestLoadTemperatureDefault(t *testing.T) {
+	clearEnv(t)
+	setRequired(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Temperature != defaultTemperature {
+		t.Errorf("expected default temperature %v, got %v", defaultTemperature, cfg.Temperature)
+	}
+}
+
+func TestLoadTemperatureOverride(t *testing.T) {
+	clearEnv(t)
+	setRequired(t)
+	t.Setenv("TEMPERATURE", "0.7")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Temperature != 0.7 {
+		t.Errorf("expected temperature 0.7, got %v", cfg.Temperature)
+	}
+	if got := cfg.Values()["TEMPERATURE"]; got != "0.7" {
+		t.Errorf("expected TEMPERATURE in Values(), got %q", got)
+	}
+}
+
+func TestLoadInvalidTemperature(t *testing.T) {
+	clearEnv(t)
+	setRequired(t)
+	for _, value := range []string{"abc", "-0.1", "1.5"} {
+		t.Setenv("TEMPERATURE", value)
+		if _, err := Load(); err == nil {
+			t.Errorf("expected error for TEMPERATURE=%q", value)
+		}
 	}
 }
 

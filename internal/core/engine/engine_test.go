@@ -94,6 +94,118 @@ func TestFullRunBasicFlow(t *testing.T) {
 	}
 }
 
+// TestSamplingAppliedPerPhase verifica que la descomposición use siempre una
+// temperatura baja fija y que las fases de hoja/síntesis usen la configurada,
+// con max_tokens acotado en todas las llamadas.
+func TestSamplingAppliedPerPhase(t *testing.T) {
+	fake := &fakeLLM{}
+	fake.queueCompletion(`{"atomic": true, "subtasks": []}`)
+	fake.queueStream([]string{"resultado de la tarea"}, nil)
+	fake.queueStream([]string{"respuesta final"}, nil)
+
+	opts := Options{
+		Model:                 "test-model",
+		MaxDecompositionDepth: 3,
+		MaxToolRoundsPerPhase: 25,
+		Temperature:           0.3,
+		MaxOutputTokens:       2048,
+	}
+	engine := New(fake, opts)
+	engine.SetGoalContext(&goal.Context{TurnInstruction: "haz algo simple"})
+
+	if err := engine.Run(context.Background(), func(Event) error { return nil }); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+
+	decomposition := fake.recordAt(0)
+	if decomposition.temperature == nil || *decomposition.temperature != decompositionTemperature {
+		t.Errorf("decomposition should use fixed temperature %.1f, got %v", decompositionTemperature, decomposition.temperature)
+	}
+	if decomposition.maxTokens == nil || *decomposition.maxTokens != 2048 {
+		t.Errorf("decomposition should use max_tokens 2048, got %v", decomposition.maxTokens)
+	}
+
+	for _, index := range []int{1, 2} {
+		req := fake.recordAt(index)
+		if req.temperature == nil || *req.temperature != 0.3 {
+			t.Errorf("record %d: expected configured temperature 0.3, got %v", index, req.temperature)
+		}
+		if req.maxTokens == nil || *req.maxTokens != 2048 {
+			t.Errorf("record %d: expected max_tokens 2048, got %v", index, req.maxTokens)
+		}
+	}
+}
+
+// TestDefaultMaxOutputTokens verifica que un motor sin límite configurado use
+// el default generoso del motor (para no truncar código legítimo).
+func TestDefaultMaxOutputTokens(t *testing.T) {
+	fake := &fakeLLM{}
+	fake.queueCompletion(`{"atomic": true, "subtasks": []}`)
+	fake.queueStream([]string{"ok"}, nil)
+	fake.queueStream([]string{"final"}, nil)
+
+	engine := newTestEngine(t, fake, nil, nil, 0)
+	engine.SetGoalContext(&goal.Context{TurnInstruction: "haz algo"})
+
+	if err := engine.Run(context.Background(), func(Event) error { return nil }); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+
+	for _, index := range []int{0, 1, 2} {
+		req := fake.recordAt(index)
+		if req.maxTokens == nil || *req.maxTokens != defaultMaxOutputTokens {
+			t.Errorf("record %d: expected default max_tokens %d, got %v", index, defaultMaxOutputTokens, req.maxTokens)
+		}
+	}
+}
+
+// TestPriorContextIsTrimmed verifica que un historial previo muy largo se poda
+// a cabeza+cola con marcador, en vez de enviarse completo.
+func TestPriorContextIsTrimmed(t *testing.T) {
+	fake := &fakeLLM{}
+	fake.queueCompletion(`{"atomic": true, "subtasks": []}`)
+	fake.queueStream([]string{"ok"}, nil)
+	fake.queueStream([]string{"final"}, nil)
+
+	huge := strings.Repeat("contexto previo ", 4000)
+	engine := newTestEngine(t, fake, nil, nil, 0)
+	engine.SetGoalContext(&goal.Context{
+		TurnInstruction: "haz algo",
+		PriorContext:    huge,
+	})
+
+	if err := engine.Run(context.Background(), func(Event) error { return nil }); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+
+	userText := userTextOf(fake.recordAt(0))
+	if !strings.Contains(userText, contextTruncationMarker) {
+		t.Errorf("trimmed prior context should carry the truncation marker")
+	}
+	if len([]rune(userText)) >= len([]rune(huge)) {
+		t.Errorf("prior context should be trimmed well below the original size, got %d runes", len([]rune(userText)))
+	}
+}
+
+// TestTrimContext unitario de cabeza+cola con marcador.
+func TestTrimContext(t *testing.T) {
+	text := "abcdefghijklmnopqrstuvwxyz"
+	trimmed := trimContext(text, 10)
+	if len([]rune(trimmed)) != 10+len(contextTruncationMarker) {
+		t.Fatalf("unexpected trimmed length %d", len([]rune(trimmed)))
+	}
+	if !strings.HasPrefix(trimmed, "abcde") || !strings.HasSuffix(trimmed, "vwxyz") {
+		t.Errorf("trim should keep head and tail, got %q", trimmed)
+	}
+	if !strings.Contains(trimmed, contextTruncationMarker) {
+		t.Errorf("trim should include the marker")
+	}
+
+	if got := trimContext(text, 100); got != text {
+		t.Errorf("text within budget should be returned intact")
+	}
+}
+
 func TestMultiRoundToolCallsPreserveHistoryWithinLeaf(t *testing.T) {
 	fake := &fakeLLM{}
 	fake.queueCompletion(`{"atomic": true, "subtasks": []}`)

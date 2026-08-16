@@ -164,6 +164,7 @@ completas en [`.env.example`](.env.example):
 | `DEBATE_ROUNDS` | `2` | Rondas de crítica+refinamiento (2-3) |
 | `MAX_DECOMPOSITION_DEPTH` | `3` | Profundidad máxima de descomposición |
 | `MAX_TOOL_ROUNDS_PER_PHASE` | `25` | Rondas de tools por fase (agotadas → responde texto) |
+| `TEMPERATURE` | `0.3` | Temperatura de muestreo (0-1). `0` = greedy/determinista. Valores bajos mantienen a los modelos locales enfocados y evitan que generen código fuera de tema. La descomposición usa siempre `0.2`. El motor además acota `max_tokens` y recorta el contexto previo para no saturar ventanas chicas |
 | `REQUEST_TIMEOUT_SECONDS` | `120s` | Timeout por request al upstream |
 | `SESSION_TTL_SECONDS` | `30m` | TTL de las sesiones persistidas |
 | `MAX_SESSIONS` | `200` | Límite de sesiones simultáneas |

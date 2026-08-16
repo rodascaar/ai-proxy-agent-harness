@@ -36,6 +36,7 @@ func main() {
 	r := router.New(cfg.Upstreams, cfg.RequestTimeout)
 	svc := service.New(r, store, cfg.DefaultModel(), cfg.MaxDecompositionDepth, cfg.MaxToolRoundsPerPhase, logger,
 		service.WithDebate(cfg.DebateEnabled, cfg.DebateRounds, r),
+		service.WithTemperature(cfg.Temperature),
 	)
 	handler := httpapi.New(svc, cfg, r, logger)
 

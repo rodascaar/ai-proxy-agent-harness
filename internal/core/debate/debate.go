@@ -27,6 +27,10 @@ type Debater struct {
 	router  ports.LLMRouter
 	primary string
 	rounds  int
+	// sampling opcional aplicado a las llamadas del debate (temperatura baja
+	// y límite de salida, igual que el resto del motor).
+	temperature *float64
+	maxTokens   *int
 }
 
 // New construye el debater. primary es el modelo del run actual (el refinador
@@ -36,6 +40,15 @@ func New(router ports.LLMRouter, primary string, rounds int) *Debater {
 		rounds = 1
 	}
 	return &Debater{router: router, primary: primary, rounds: rounds}
+}
+
+// WithSampling fija la temperatura y el límite de salida de las llamadas del
+// debate, para que la crítica y el refinamiento se comporten de forma tan
+// enfocada como el resto del motor.
+func (d *Debater) WithSampling(temperature *float64, maxTokens *int) *Debater {
+	d.temperature = temperature
+	d.maxTokens = maxTokens
+	return d
 }
 
 // Refine mejora el resultado de una tarea atómica. initial es el texto ya
@@ -135,6 +148,8 @@ func (d *Debater) complete(ctx context.Context, model, system, user string) (str
 			{Role: openai.RoleSystem, Content: openai.NewTextContent(system)},
 			{Role: openai.RoleUser, Content: openai.NewTextContent(user)},
 		},
+		Temperature: d.temperature,
+		MaxTokens:   d.maxTokens,
 	})
 	if err != nil {
 		return "", fmt.Errorf("debate complete (%s): %w", model, err)

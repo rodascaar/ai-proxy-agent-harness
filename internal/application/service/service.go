@@ -30,6 +30,7 @@ type Service struct {
 	maxToolRoundsPerPhase int
 	debateEnabled         bool
 	debateRounds          int
+	temperature           float64
 	logger                *slog.Logger
 }
 
@@ -43,6 +44,15 @@ func WithDebate(enabled bool, rounds int, router ports.LLMRouter) Option {
 		s.debateEnabled = enabled
 		s.debateRounds = rounds
 		s.router = router
+	}
+}
+
+// WithTemperature fija la temperatura de muestreo del motor para las fases de
+// ejecución y síntesis. Un valor bajo (0.2-0.3) mantiene la salida enfocada en
+// la tarea, clave para modelos locales chicos.
+func WithTemperature(temperature float64) Option {
+	return func(s *Service) {
+		s.temperature = temperature
 	}
 }
 
@@ -60,6 +70,7 @@ func New(client ports.LLMClient, store session.Store, defaultModel string, maxDe
 		maxDecompositionDepth: maxDecompositionDepth,
 		maxToolRoundsPerPhase: maxToolRoundsPerPhase,
 		debateRounds:          2,
+		temperature:           0.3,
 		logger:                logger,
 	}
 	for _, opt := range opts {
@@ -220,6 +231,8 @@ func (s *Service) engineOptions(model string, tools []openai.Tool, toolChoice js
 		ToolChoice:            toolChoice,
 		MaxDecompositionDepth: s.maxDecompositionDepth,
 		MaxToolRoundsPerPhase: s.maxToolRoundsPerPhase,
+		Temperature:           s.temperature,
+		Logger:                s.logger,
 	}
 	if s.debateEnabled && s.router != nil {
 		opts.Debate = &engine.DebateOptions{
