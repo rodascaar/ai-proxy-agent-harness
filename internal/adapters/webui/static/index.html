@@ -17,7 +17,6 @@
         <span class="dot" id="status-dot"></span>
         <span id="status-text">conectando…</span>
       </div>
-      <button type="button" id="current-model" class="model-chip" hidden title="Modelo activo" aria-label="Modelo activo"></button>
       <button type="button" id="config-toggle" class="btn btn-ghost icon-btn" aria-label="Abrir configuración" aria-expanded="false" aria-controls="config-panel" title="Configuración">⚙</button>
     </div>
   </header>
@@ -40,12 +39,21 @@
         <p>Escribí tu primer mensaje para empezar. Podés adjuntar imágenes (si el modelo las soporta), PDF, DOCX o archivos de texto.</p>
       </div>
       <form class="composer" id="composer">
+        <div class="model-row">
+          <label for="model-select">Modelo</label>
+          <span class="select-row">
+            <select id="model-select" aria-label="Modelo del chat">
+              <option value="">(cargando modelos…)</option>
+            </select>
+            <button type="button" id="refresh-models" class="btn btn-ghost row-btn" title="Recargar la lista de modelos" aria-label="Recargar modelos">↻</button>
+          </span>
+        </div>
         <div class="attachments" id="attachments" hidden></div>
         <div class="composer-row">
           <button type="button" id="attach" class="btn btn-ghost icon-btn attach-btn" aria-label="Adjuntar archivos" title="Adjuntar archivos (imágenes, PDF, DOCX, texto)">+</button>
           <input type="file" id="file-input" multiple accept="image/*,.pdf,.docx,.txt,.md,.markdown,.json,.csv,.log,.yaml,.yml,.xml,.sql,.sh,.go,.py,.js,.mjs,.cjs,.ts,.jsx,.tsx,.html,.htm,.css,.java,.c,.h,.cpp,.rs,.rb,.php,.toml,.ini,.conf" hidden />
           <textarea id="input" rows="1" placeholder="Escribe tu instrucción… (Enter envía, Shift+Enter nueva línea)" autocomplete="off"></textarea>
-          <button type="submit" id="send" class="btn btn-primary" aria-label="Enviar">Enviar</button>
+          <button type="button" id="send" class="btn btn-primary" aria-label="Enviar">Enviar</button>
         </div>
         <p class="typing" id="typing" aria-live="polite" hidden>
           <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
@@ -60,18 +68,6 @@
       <h2>Configuración</h2>
       <p class="hint">Los cambios se guardan en <code>.env</code> y aplican al reiniciar el proxy. Escribí la URL de cada servidor y usá <strong>Detectar</strong> para traer sus modelos.</p>
       <form id="config-form">
-        <div class="chat-model">
-          <label>Modelo del chat
-            <span class="select-row">
-              <select id="model-select">
-                <option value="">(cargando modelos…)</option>
-              </select>
-              <button type="button" id="refresh-models" class="btn btn-ghost row-btn" title="Recargar la lista de modelos">↻</button>
-            </span>
-          </label>
-          <p class="hint">Lista los modelos disponibles en todos los upstreams.</p>
-        </div>
-
         <fieldset class="upstream">
           <legend>Upstream 1 (primario)</legend>
           <label>URL
@@ -84,7 +80,7 @@
           <label>Modelos (separados por coma)
             <input name="UPSTREAM_1_MODELS" placeholder="qwen2.5:7b,llama3.2:3b" />
           </label>
-          <label>API key <span class="set" id="key-badge" hidden>configurada</span>
+          <label>API key <span class="set" data-key-badge-for="UPSTREAM_1" hidden>configurada</span>
             <input name="UPSTREAM_1_API_KEY" type="password" placeholder="(dejar vacío para conservar)" />
           </label>
         </fieldset>
@@ -101,7 +97,7 @@
           <label>Modelos (separados por coma)
             <input name="UPSTREAM_2_MODELS" placeholder="gpt-4o-mini" />
           </label>
-          <label>API key
+          <label>API key <span class="set" data-key-badge-for="UPSTREAM_2" hidden>configurada</span>
             <input name="UPSTREAM_2_API_KEY" type="password" placeholder="(dejar vacío para conservar)" />
           </label>
         </fieldset>
@@ -118,7 +114,7 @@
           <label>Modelos (separados por coma)
             <input name="UPSTREAM_3_MODELS" placeholder="" />
           </label>
-          <label>API key
+          <label>API key <span class="set" data-key-badge-for="UPSTREAM_3" hidden>configurada</span>
             <input name="UPSTREAM_3_API_KEY" type="password" placeholder="(dejar vacío para conservar)" />
           </label>
         </fieldset>
@@ -141,6 +137,19 @@
         <div class="save-note" id="save-note" hidden></div>
       </form>
     </aside>
+  </div>
+
+  <div class="overlay modal-overlay" id="modal-overlay" hidden></div>
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
+    <h2 id="modal-title"></h2>
+    <p id="modal-message"></p>
+    <label id="modal-input-wrap" hidden>
+      <input type="text" id="modal-input" />
+    </label>
+    <div class="modal-actions">
+      <button type="button" id="modal-cancel" class="btn btn-ghost">Cancelar</button>
+      <button type="button" id="modal-ok" class="btn btn-primary">Confirmar</button>
+    </div>
   </div>
 
   <script src="/app.js"></script>

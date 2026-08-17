@@ -24,7 +24,7 @@ func TestGetConfig(t *testing.T) {
 	}
 	payload := decodeResponse[struct {
 		Config       map[string]string `json:"config"`
-		APIKeySet    bool              `json:"apiKeySet"`
+		APIKeySet    map[string]bool   `json:"apiKeySet"`
 		DefaultModel string            `json:"defaultModel"`
 	}](t, rec)
 	if payload.Config["UPSTREAM_MODEL"] != "test-model" {
@@ -33,11 +33,47 @@ func TestGetConfig(t *testing.T) {
 	if _, leaked := payload.Config["UPSTREAM_API_KEY"]; leaked {
 		t.Errorf("config must not leak the API key")
 	}
-	if payload.APIKeySet {
-		t.Errorf("apiKeySet should be false in the test server")
+	if len(payload.APIKeySet) != 0 {
+		t.Errorf("apiKeySet should be empty in the test server, got %v", payload.APIKeySet)
 	}
 	if payload.DefaultModel != "test-model" {
 		t.Errorf("expected defaultModel test-model, got %q", payload.DefaultModel)
+	}
+}
+
+func TestGetConfigAPIKeysSetPerUpstream(t *testing.T) {
+	llm := fakellm.New()
+	store, err := md.New(t.TempDir(), time.Minute, 100, noopLogger())
+	if err != nil {
+		t.Fatalf("md.New() error: %v", err)
+	}
+	svc := service.New(llm, store, "test-model", 3, 25, noopLogger())
+	cfg := &config.Config{
+		Upstreams: []config.Upstream{
+			{BaseURL: "http://a/v1", APIKey: "k1", Models: []string{"a"}},
+			{BaseURL: "http://b/v1", Models: []string{"b"}},
+			{BaseURL: "http://c/v1", APIKey: "k3", Models: []string{"c"}},
+		},
+		RequestTimeout: time.Minute,
+		SessionsDir:    ".sessions",
+		MaxFileBytes:   20 << 20,
+	}
+	handler := httpapi.New(svc, cfg, nil, noopLogger())
+	rec := doJSON(t, handler, http.MethodGet, "/api/config", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	payload := decodeResponse[struct {
+		APIKeySet map[string]bool `json:"apiKeySet"`
+	}](t, rec)
+	if !payload.APIKeySet["UPSTREAM_1"] {
+		t.Errorf("UPSTREAM_1 should report key set")
+	}
+	if payload.APIKeySet["UPSTREAM_2"] {
+		t.Errorf("UPSTREAM_2 should not report key set")
+	}
+	if !payload.APIKeySet["UPSTREAM_3"] {
+		t.Errorf("UPSTREAM_3 should report key set")
 	}
 }
 

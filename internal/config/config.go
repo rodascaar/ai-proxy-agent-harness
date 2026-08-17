@@ -143,6 +143,24 @@ func (c *Config) HasAPIKey() bool {
 	return false
 }
 
+// APIKeysSet informa, por upstream indexado, si tiene API key configurada
+// (mapa "UPSTREAM_N" -> bool). Se usa para los badges por upstream de la UI
+// sin exponer las claves. La key legada (UPSTREAM_API_KEY) se reporta como
+// UPSTREAM_1, en línea con el mapeo de Values().
+func (c *Config) APIKeysSet() map[string]bool {
+	result := make(map[string]bool, defaultMaxUpstreams)
+	if c.UpstreamAPIKey != "" {
+		result["UPSTREAM_1"] = true
+	}
+	for index, upstream := range c.Upstreams {
+		if index >= defaultMaxUpstreams {
+			break
+		}
+		result[fmt.Sprintf("UPSTREAM_%d", index+1)] = upstream.APIKey != ""
+	}
+	return result
+}
+
 // Addr devuelve la dirección host:puerto donde debe escuchar el proxy.
 func (c *Config) Addr() string {
 	return fmt.Sprintf("%s:%d", c.ProxyHost, c.ProxyPort)

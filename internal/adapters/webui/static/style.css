@@ -87,25 +87,6 @@ body {
 .dot.ok { background: var(--ok); }
 .dot.err { background: var(--error); }
 
-.model-chip {
-  flex: 0 0 auto;
-  max-width: 200px;
-  height: 28px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--panel-2);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.model-chip:hover { border-color: var(--accent); }
-
 /* ---------------------------------------------------------------------------
  * Botones (design system base + variantes)
  * ------------------------------------------------------------------------- */
@@ -166,8 +147,8 @@ body {
 .btn-block { width: 100%; }
 
 /* Tamaños específicos por componente */
-.icon-btn { height: 32px; padding: 0 11px; font-size: var(--text-base); }
-.attach-btn { height: 38px; padding: 0 13px; font-size: var(--text-md); }
+.icon-btn { height: 32px; padding: 0 11px; font-size: var(--text-base); border-radius: var(--radius-lg); }
+.attach-btn { height: 38px; padding: 0 13px; font-size: var(--text-md); border-radius: var(--radius-lg); }
 .new-chat-btn { width: 100%; padding: 9px 12px; }
 .row-btn { padding: 0 12px; }
 .select-row .row-btn { font-size: var(--text-base); }
@@ -243,6 +224,7 @@ body {
 }
 .conv-item:hover { background: var(--panel-2); }
 .conv-item.active { background: var(--panel-2); border: 1px solid var(--accent); }
+.conv-item.disabled { pointer-events: none; opacity: 0.5; }
 
 .conv-title {
   flex: 1 1 auto;
@@ -391,6 +373,7 @@ body {
   color: var(--accent);
 }
 .msg.error .bubble { border-color: var(--error); color: var(--error); }
+.msg.error .bubble .retry-btn { margin-top: 10px; }
 
 /* Imágenes en mensajes del usuario */
 .attachments-row {
@@ -418,6 +401,36 @@ body {
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
+
+/* Fila de selección de modelo: siempre visible sobre el input */
+.model-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--muted);
+}
+.model-row label { flex: 0 0 auto; }
+.model-row .select-row {
+  display: flex;
+  flex: 1;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.model-row select {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.model-row select:focus { outline: none; border-color: var(--accent); }
 
 .composer-row {
   display: flex;
@@ -576,8 +589,6 @@ body {
 .config .detect-status.ok { color: var(--ok); }
 .config .detect-status.err { color: var(--error); }
 
-.config .chat-model { margin-bottom: var(--space-4); }
-
 .config fieldset.upstream {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -615,6 +626,49 @@ body {
 .save-note.err { border-color: var(--error); color: var(--error); }
 
 /* ---------------------------------------------------------------------------
+ * Modal (reemplaza confirm()/prompt() nativos)
+ * ------------------------------------------------------------------------- */
+
+.modal-overlay {
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay[hidden] { display: none; }
+
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 70;
+  width: min(92%, 380px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.modal[hidden] { display: none; }
+.modal h2 { margin: 0 0 8px; font-size: 15px; }
+.modal p { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.modal label { display: block; }
+.modal input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  margin-bottom: 12px;
+}
+.modal input:focus { outline: none; border-color: var(--accent); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---------------------------------------------------------------------------
  * Responsive
  * ------------------------------------------------------------------------- */
 
@@ -650,5 +704,4 @@ body {
   .msg { max-width: 95%; }
   .composer { padding: 8px 12px 12px; }
   .topbar { padding: 8px 10px; }
-  .model-chip { max-width: 120px; }
 }

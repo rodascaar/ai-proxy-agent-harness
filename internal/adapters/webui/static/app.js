@@ -16,7 +16,6 @@ const attachmentsEl = document.getElementById("attachments");
 const statusDot = document.getElementById("status-dot");
 const statusText = document.getElementById("status-text");
 const configForm = document.getElementById("config-form");
-const keyBadge = document.getElementById("key-badge");
 const saveNote = document.getElementById("save-note");
 const convListEl = document.getElementById("conv-list");
 const sidebarEmptyEl = document.getElementById("sidebar-empty");
@@ -38,6 +37,7 @@ let activeConvId = null;
 let conversations = [];
 let attachments = [];
 let drawerFocusReturnEl = null;
+let currentController = null;
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -374,26 +374,69 @@ function clearAttachments() {
   attachments = [];
   attachmentsEl.hidden = true;
   attachmentsEl.innerHTML = "";
+  syncSendState();
 }
 
-async function sendMessage() {
-  const text = inputEl.value.trim();
-  const content = buildUserContent(text);
-  history.push({ role: "user", content: content });
-  addMessage("user", contentToHTML(content));
-  inputEl.value = "";
-  inputEl.style.height = "auto";
-  clearAttachments();
+// syncSendState habilita/deshabilita Enviar según si hay texto o adjuntos.
+function syncSendState() {
+  const canSend = !busy && (inputEl.value.trim() !== "" || attachments.length > 0);
+  sendBtn.disabled = !canSend;
+}
 
-  const assistant = createAssistant();
+// setBusyUI aplica el estado "generando" sobre toda la UI: deshabilita inputs,
+// convierte Enviar en Detener, marca la lista de conversaciones y new-chat.
+function setBusyUI(b) {
+  busy = b;
+  inputEl.disabled = b;
+  attachBtn.disabled = b;
+  typingEl.hidden = !b;
+  if (b) {
+    sendBtn.textContent = "Detener";
+    sendBtn.setAttribute("aria-label", "Detener generación");
+    sendBtn.classList.add("btn-danger");
+    sendBtn.classList.remove("btn-primary");
+    sendBtn.disabled = false;
+  } else {
+    sendBtn.textContent = "Enviar";
+    sendBtn.setAttribute("aria-label", "Enviar");
+    sendBtn.classList.remove("btn-danger");
+    sendBtn.classList.add("btn-primary");
+    syncSendState();
+  }
+  const newChatBtn = document.getElementById("new-chat");
+  if (newChatBtn) newChatBtn.disabled = b;
+  for (const li of convListEl.querySelectorAll(".conv-item")) {
+    li.classList.toggle("disabled", b);
+    li.setAttribute("aria-disabled", String(b));
+  }
+}
+
+async function sendMessage(retry) {
+  const text = inputEl.value.trim();
   const modelEl = document.getElementById("model-select");
   const model = (modelEl && modelEl.value) || "";
 
-  busy = true;
-  sendBtn.disabled = true;
-  inputEl.disabled = true;
-  attachBtn.disabled = true;
-  typingEl.hidden = false;
+  if (!model) {
+    addMessage("assistant", "Elegí un modelo en el selector antes de enviar.", "error");
+    if (modelEl) modelEl.focus();
+    return;
+  }
+
+  if (!retry) {
+    if (!text && attachments.length === 0) return;
+    const content = buildUserContent(text);
+    history.push({ role: "user", content: content });
+    addMessage("user", contentToHTML(content));
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+    clearAttachments();
+  }
+
+  const assistant = createAssistant();
+  const controller = new AbortController();
+  currentController = controller;
+
+  setBusyUI(true);
 
   const headers = { "Content-Type": "application/json" };
   if (activeConvId) headers["X-Conversation-ID"] = activeConvId;
@@ -408,6 +451,7 @@ async function sendMessage() {
         stream: true,
         messages: history,
       }),
+      signal: controller.signal,
     });
 
     if (!res.ok) {
@@ -440,17 +484,22 @@ async function sendMessage() {
   } catch (err) {
     assistant.dispose();
     assistant.wrap && assistant.wrap.remove();
-    addMessage(
-      "assistant",
-      escapeHtml("Error: " + (err.message || err)),
-      "error"
-    );
+    if (err && err.name === "AbortError") {
+      // Cancelación voluntaria del usuario: sin mensaje de error.
+    } else {
+      const bubble = addMessage("assistant", escapeHtml("Error: " + (err.message || err)), "error");
+      if (!retry) {
+        const retryBtn = document.createElement("button");
+        retryBtn.className = "btn btn-secondary retry-btn";
+        retryBtn.type = "button";
+        retryBtn.textContent = "Reintentar";
+        retryBtn.addEventListener("click", () => sendMessage(true));
+        bubble.appendChild(retryBtn);
+      }
+    }
   } finally {
-    busy = false;
-    sendBtn.disabled = false;
-    inputEl.disabled = false;
-    attachBtn.disabled = false;
-    typingEl.hidden = true;
+    currentController = null;
+    setBusyUI(false);
     messagesEl.removeAttribute("aria-busy");
     inputEl.focus();
   }
@@ -550,6 +599,7 @@ function renderAttachments() {
   if (attachments.length === 0) {
     attachmentsEl.hidden = true;
     attachmentsEl.innerHTML = "";
+    syncSendState();
     return;
   }
   attachmentsEl.hidden = false;
@@ -588,6 +638,7 @@ function renderAttachments() {
     chip.append(info, remove);
     attachmentsEl.appendChild(chip);
   });
+  syncSendState();
 }
 
 // ---------------------------------------------------------------------------
@@ -612,11 +663,12 @@ function renderConversationList() {
   for (const conv of conversations) {
     const li = document.createElement("li");
     const active = conv.id === activeConvId;
-    li.className = "conv-item" + (active ? " active" : "");
+    li.className = "conv-item" + (active ? " active" : "") + (busy ? " disabled" : "");
     li.dataset.id = conv.id;
     li.tabIndex = 0;
     li.setAttribute("role", "button");
     li.setAttribute("aria-label", "Conversación: " + (conv.title || "(sin título)"));
+    li.setAttribute("aria-disabled", String(busy));
     if (active) li.setAttribute("aria-current", "true");
 
     const title = document.createElement("span");
@@ -695,7 +747,16 @@ async function selectConversation(id) {
 }
 
 async function deleteConversation(id) {
-  if (!confirm("¿Eliminar esta conversación?")) return;
+  if (busy && id === activeConvId) {
+    addMessage("assistant", "Esperá a que termine la respuesta actual antes de eliminar la conversación.", "error");
+    return;
+  }
+  const ok = await openModal({
+    title: "Eliminar conversación",
+    message: "¿Eliminar esta conversación?",
+    okLabel: "Eliminar",
+  });
+  if (!ok) return;
   try {
     await fetch("/api/conversations/" + encodeURIComponent(id), { method: "DELETE" });
     if (id === activeConvId) {
@@ -713,7 +774,12 @@ async function deleteConversation(id) {
 
 async function renameConversation(id) {
   const current = (conversations.find((c) => c.id === id) || {}).title || "";
-  const title = prompt("Nuevo título:", current);
+  const title = await openModal({
+    title: "Renombrar conversación",
+    message: "Nuevo título:",
+    value: current,
+    okLabel: "Guardar",
+  });
   if (title === null) return;
   const trimmed = title.trim();
   if (trimmed === "") return;
@@ -769,6 +835,13 @@ function toggleSidebar() {
   }
 }
 
+// syncDrawerAria alinea el estado aria-expanded con lo que realmente se ve:
+// en desktop el sidebar está expandido salvo que tenga .no-sidebar.
+function syncDrawerAria() {
+  const wide = window.matchMedia(WIDE_QUERY).matches;
+  sidebarToggle.setAttribute("aria-expanded", String(wide && !app.classList.contains("no-sidebar")));
+}
+
 function toggleConfig() {
   if (window.matchMedia(WIDE_QUERY).matches) {
     app.classList.toggle("no-config");
@@ -784,6 +857,7 @@ function toggleConfig() {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (!modalEl.hidden) return;
   if (sidebar.classList.contains("open") || configPanel.classList.contains("open")) {
     event.preventDefault();
     closeDrawers();
@@ -799,6 +873,7 @@ window.addEventListener("resize", () => {
     configOverlay.hidden = true;
     drawerFocusReturnEl = null;
   }
+  syncDrawerAria();
 });
 
 // ---------------------------------------------------------------------------
@@ -846,7 +921,6 @@ async function refreshModels() {
   } catch {
     select.innerHTML = '<option value="">(error de conexión)</option>';
   }
-  syncCurrentModel();
 }
 
 // ---------------------------------------------------------------------------
@@ -874,8 +948,9 @@ async function loadConfig() {
         el.value = config[el.name];
       }
     }
-    if (payload.apiKeySet) {
-      keyBadge.hidden = false;
+    const keySet = payload.apiKeySet || {};
+    for (const badge of document.querySelectorAll("[data-key-badge-for]")) {
+      badge.hidden = !keySet[badge.dataset.keyBadgeFor];
     }
     await refreshModels();
     setStatus(true, "listo");
@@ -979,13 +1054,84 @@ async function detectModels(prefix) {
 }
 
 // ---------------------------------------------------------------------------
+// Modal (reemplaza confirm()/prompt() nativos)
+// ---------------------------------------------------------------------------
+
+let modalResolve = null;
+const modalEl = document.getElementById("modal");
+const modalOverlay = document.getElementById("modal-overlay");
+const modalTitle = document.getElementById("modal-title");
+const modalMessage = document.getElementById("modal-message");
+const modalInputWrap = document.getElementById("modal-input-wrap");
+const modalInput = document.getElementById("modal-input");
+const modalOk = document.getElementById("modal-ok");
+const modalCancel = document.getElementById("modal-cancel");
+
+// openModal muestra un diálogo propio (dark, themeable). Si se pasa `value`,
+// incluye un input y resuelve con el texto; si no, resuelve con true/null.
+function openModal({ title, message, value, okLabel }) {
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+    modalTitle.textContent = title;
+    modalMessage.textContent = message;
+    const withInput = typeof value === "string";
+    modalInputWrap.hidden = !withInput;
+    if (withInput) {
+      modalInput.value = value;
+      modalInput.select();
+    } else {
+      modalInput.value = "";
+    }
+    modalOk.textContent = okLabel || "Confirmar";
+    modalOverlay.hidden = false;
+    modalEl.hidden = false;
+    (withInput ? modalInput : modalOk).focus();
+  });
+}
+
+function closeModal(result) {
+  if (modalEl.hidden) return;
+  modalOverlay.hidden = true;
+  modalEl.hidden = true;
+  if (modalResolve) {
+    modalResolve(result);
+    modalResolve = null;
+  }
+}
+
+modalOk.addEventListener("click", () => {
+  closeModal(modalInputWrap.hidden ? true : modalInput.value);
+});
+modalCancel.addEventListener("click", () => closeModal(null));
+modalOverlay.addEventListener("click", () => closeModal(null));
+document.addEventListener("keydown", (event) => {
+  if (modalEl.hidden) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeModal(null);
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    closeModal(modalInputWrap.hidden ? true : modalInput.value);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
 
 composer.addEventListener("submit", (event) => {
   event.preventDefault();
   if (busy) return;
+  if (!inputEl.value.trim() && attachments.length === 0) return;
   sendMessage();
+});
+
+sendBtn.addEventListener("click", () => {
+  if (busy) {
+    if (currentController) currentController.abort();
+  } else {
+    composer.requestSubmit();
+  }
 });
 
 inputEl.addEventListener("keydown", (event) => {
@@ -998,6 +1144,7 @@ inputEl.addEventListener("keydown", (event) => {
 inputEl.addEventListener("input", () => {
   inputEl.style.height = "auto";
   inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + "px";
+  syncSendState();
 });
 
 attachBtn.addEventListener("click", () => fileInput.click());
@@ -1016,29 +1163,13 @@ if (refreshBtn) {
   refreshBtn.addEventListener("click", refreshModels);
 }
 
-const modelSelect = document.getElementById("model-select");
-const currentModelBtn = document.getElementById("current-model");
-
-function syncCurrentModel() {
-  if (!currentModelBtn || !modelSelect) return;
-  const v = modelSelect.value;
-  currentModelBtn.textContent = v;
-  currentModelBtn.title = v ? "Modelo activo: " + v : "Sin modelo seleccionado. Abrí configuración para elegir.";
-  currentModelBtn.hidden = !v;
-}
-
-if (currentModelBtn) {
-  currentModelBtn.addEventListener("click", toggleConfig);
-}
-if (modelSelect) {
-  modelSelect.addEventListener("change", syncCurrentModel);
-}
-
 document.querySelectorAll(".detect-models").forEach((btn) => {
   btn.addEventListener("click", () => detectModels(btn.dataset.upstream));
 });
 
 // Arranque
 updateEmptyState();
+syncDrawerAria();
+syncSendState();
 loadConfig();
 refreshConversations();

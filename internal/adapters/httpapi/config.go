@@ -10,11 +10,11 @@ import (
 )
 
 // getConfig devuelve la configuración resuelta para la Web UI. La API key
-// nunca se expone: solo se informa si está seteada.
+// nunca se expone: solo se informa por upstream si está seteada.
 func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"config":       s.cfg.Values(),
-		"apiKeySet":    s.cfg.HasAPIKey(),
+		"apiKeySet":    s.cfg.APIKeysSet(),
 		"defaultModel": s.cfg.DefaultModel(),
 	})
 }
