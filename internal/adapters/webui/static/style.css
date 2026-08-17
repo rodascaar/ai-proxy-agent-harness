@@ -10,10 +10,37 @@
   --reasoning: #3a4150;
   --error: #ff6b6b;
   --ok: #4cd07d;
+  --on-accent: #0b0d12;
   --topbar-h: 53px;
+
+  /* Escala de espaciado (grid de 8px) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* Radios */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  /* Escala tipográfica */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 18px;
+  --text-lg: 20px;
 }
 
 * { box-sizing: border-box; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 html, body {
   margin: 0;
@@ -37,7 +64,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
@@ -60,21 +87,96 @@ body {
 .dot.ok { background: var(--ok); }
 .dot.err { background: var(--error); }
 
-.icon-btn {
+.model-chip {
   flex: 0 0 auto;
-  padding: 0 11px;
-  height: 32px;
+  max-width: 200px;
+  height: 28px;
+  padding: 0 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--panel-2);
   color: var(--text);
   font: inherit;
-  font-size: 15px;
+  font-size: 12px;
+  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.icon-btn:hover { border-color: var(--accent); }
-.icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.model-chip:hover { border-color: var(--accent); }
+
+/* ---------------------------------------------------------------------------
+ * Botones (design system base + variantes)
+ * ------------------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease, filter 0.12s ease, opacity 0.12s ease;
+}
+.btn:active { filter: brightness(0.92); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary {
+  padding: 10px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.btn-primary:not(:disabled):hover { filter: brightness(1.07); }
+
+.btn-secondary {
+  padding: 10px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--accent-2);
+  color: #fff;
+  font-weight: 600;
+}
+.btn-secondary:not(:disabled):hover { border-color: var(--accent); }
+
+.btn-ghost {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--border);
+}
+.btn-ghost:not(:disabled):hover { border-color: var(--accent); }
+
+.btn-danger {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+}
+.btn-danger:not(:disabled):hover { color: var(--error); background: var(--panel-2); }
+.btn:not(:disabled):active { filter: brightness(0.9); }
+
+.btn-block { width: 100%; }
+
+/* Tamaños específicos por componente */
+.icon-btn { height: 32px; padding: 0 11px; font-size: var(--text-base); }
+.attach-btn { height: 38px; padding: 0 13px; font-size: var(--text-md); }
+.new-chat-btn { width: 100%; padding: 9px 12px; }
+.row-btn { padding: 0 12px; }
+.select-row .row-btn { font-size: var(--text-base); }
+.url-row .row-btn { font-size: var(--text-sm); }
+.config .select-row .btn,
+.config .url-row .btn { margin-top: var(--space-1); }
+.config .url-row .btn:disabled { opacity: 0.6; cursor: wait; }
+.conv-delete { padding: 2px 4px; font-size: var(--text-sm); }
+.att-remove { padding: 2px 4px; font-size: 16px; }
 
 /* ---------------------------------------------------------------------------
  * Layout principal (desktop: 3 columnas)
@@ -119,25 +221,10 @@ body {
   color: var(--muted);
 }
 
-.new-chat-btn {
-  width: 100%;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--accent-2);
-  color: #fff;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-.new-chat-btn:hover { border-color: var(--accent); }
-
 .conv-list {
   list-style: none;
   margin: 0;
-  padding: 8px;
+  padding: var(--space-2);
   overflow-y: auto;
   overflow-x: hidden;
   flex: 1;
@@ -175,19 +262,6 @@ body {
   white-space: nowrap;
 }
 
-.conv-delete {
-  flex: 0 0 auto;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 6px;
-  line-height: 1;
-}
-.conv-delete:hover { color: var(--error); background: var(--panel-2); }
-
 .sidebar-hint { padding: 0 12px 12px; }
 
 /* ---------------------------------------------------------------------------
@@ -199,17 +273,35 @@ body {
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
+
+.chat-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  color: var(--muted);
+  text-align: center;
+  pointer-events: none;
+}
+.chat-empty[hidden] { display: none; }
+.chat-empty .chat-empty-icon { margin: 0; font-size: 32px; line-height: 1; }
+.chat-empty p { margin: 0; font-size: var(--text-sm); max-width: 340px; }
 
 .messages {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 20px 24px;
+  padding: var(--space-5) var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .msg { max-width: min(82%, 760px); min-width: 0; }
@@ -218,7 +310,7 @@ body {
 
 .msg .bubble {
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--panel-2);
   border: 1px solid var(--border);
   white-space: pre-wrap;
@@ -245,7 +337,7 @@ body {
   margin: 8px 0 0;
   padding: 8px;
   background: var(--reasoning);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 12.5px;
   white-space: pre-wrap;
   color: #c9cedd;
@@ -255,12 +347,43 @@ body {
   margin: 8px 0 0;
   padding: 10px;
   background: #0b0d12;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow-x: auto;
   max-width: 100%;
 }
 .msg code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 .msg .bubble code { background: #0b0d12; padding: 1px 5px; border-radius: 4px; }
+
+.msg .bubble h1, .msg .bubble h2, .msg .bubble h3, .msg .bubble h4 {
+  margin: var(--space-3) 0 var(--space-2);
+  line-height: 1.3;
+}
+.msg .bubble h1 { font-size: 1.15em; }
+.msg .bubble h2 { font-size: 1.08em; }
+.msg .bubble h3, .msg .bubble h4 { font-size: 1em; }
+.msg .bubble p { margin: var(--space-2) 0; }
+.msg .bubble ul, .msg .bubble ol { margin: var(--space-2) 0; padding-left: 22px; }
+.msg .bubble li { margin: 2px 0; }
+.msg .bubble a { color: var(--accent); text-decoration: underline; }
+.msg .bubble blockquote {
+  margin: var(--space-2) 0;
+  padding: 2px var(--space-3);
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+.msg .bubble table {
+  border-collapse: collapse;
+  margin: var(--space-2) 0;
+  font-size: var(--text-sm);
+  max-width: 100%;
+}
+.msg .bubble th, .msg .bubble td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.msg .bubble th { background: var(--panel-2); font-weight: 600; }
 
 .msg .tools {
   margin-top: 8px;
@@ -316,32 +439,33 @@ body {
 }
 .composer textarea:focus { outline: none; border-color: var(--accent); }
 
-.composer .attach-btn {
-  flex: 0 0 auto;
-  height: 38px;
-  font-size: 18px;
-  line-height: 1;
-  padding: 0 13px;
-}
-
-.composer #send {
-  flex: 0 0 auto;
-  padding: 10px 18px;
-  border: none;
-  border-radius: 10px;
-  background: var(--accent);
-  color: #fff;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.composer #send:disabled { opacity: 0.5; cursor: not-allowed; }
-
 .composer-note {
   margin: 0;
   font-size: 11.5px;
   color: var(--muted);
+}
+
+.typing {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.typing[hidden] { display: none; }
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: typing-blink 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing-blink {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-2px); }
 }
 
 .attachments {
@@ -349,6 +473,7 @@ body {
   flex-wrap: wrap;
   gap: 8px;
 }
+.attachments[hidden] { display: none; }
 
 .att-chip {
   display: flex;
@@ -388,19 +513,6 @@ body {
   font-size: 11px;
   color: var(--muted);
 }
-
-.att-remove {
-  flex: 0 0 auto;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 6px;
-}
-.att-remove:hover { color: var(--error); }
 
 /* ---------------------------------------------------------------------------
  * Panel de configuración
@@ -448,41 +560,11 @@ body {
 .config label select:focus { outline: none; border-color: var(--accent); }
 
 /* Botones de fila: nunca se deforman ni se encogen */
-.config .select-row { display: flex; gap: 6px; }
+.config .select-row { display: flex; gap: var(--space-2); }
 .config .select-row select { flex: 1; margin-top: 4px; }
-.config .select-row button {
-  flex: 0 0 auto;
-  flex-shrink: 0;
-  white-space: nowrap;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel-2);
-  color: var(--text);
-  font: inherit;
-  font-size: 15px;
-  cursor: pointer;
-  margin-top: 4px;
-}
-.config .select-row button:hover { border-color: var(--accent); }
 
-.config .url-row { display: flex; gap: 6px; }
+.config .url-row { display: flex; gap: var(--space-2); }
 .config .url-row input { flex: 1; }
-.config .url-row button {
-  flex: 0 0 auto;
-  flex-shrink: 0;
-  white-space: nowrap;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel-2);
-  color: var(--text);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.config .url-row button:hover { border-color: var(--accent); }
-.config .url-row button:disabled { opacity: 0.6; cursor: wait; }
 
 .config .detect-status {
   display: block;
@@ -494,7 +576,7 @@ body {
 .config .detect-status.ok { color: var(--ok); }
 .config .detect-status.err { color: var(--error); }
 
-.config .chat-model { margin-bottom: 16px; }
+.config .chat-model { margin-bottom: var(--space-4); }
 
 .config fieldset.upstream {
   border: 1px solid var(--border);
@@ -518,18 +600,6 @@ body {
   float: right;
   font-size: 11px;
   color: var(--ok);
-}
-
-.config button[type="submit"] {
-  width: 100%;
-  padding: 10px;
-  border: none;
-  border-radius: 10px;
-  background: var(--accent-2);
-  color: #fff;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
 }
 
 .save-note {
@@ -580,4 +650,5 @@ body {
   .msg { max-width: 95%; }
   .composer { padding: 8px 12px 12px; }
   .topbar { padding: 8px 10px; }
+  .model-chip { max-width: 120px; }
 }

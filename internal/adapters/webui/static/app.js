@@ -5,6 +5,8 @@
 // ---------------------------------------------------------------------------
 
 const messagesEl = document.getElementById("messages");
+const chatEmptyEl = document.getElementById("chat-empty");
+const typingEl = document.getElementById("typing");
 const composer = document.getElementById("composer");
 const inputEl = document.getElementById("input");
 const sendBtn = document.getElementById("send");
@@ -35,6 +37,7 @@ let busy = false;
 let activeConvId = null;
 let conversations = [];
 let attachments = [];
+let drawerFocusReturnEl = null;
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -49,21 +52,144 @@ function escapeHtml(text) {
     .replace(/'/g, "&#39;");
 }
 
-// markdownLite: escapa HTML, detecta bloques de código (```...```), inline
-// code (`x`), negrita (**x**) y saltos de línea. Suficiente para un chat de
-// pruebas sin arrastrar una librería.
+// renderInline formatea el texto inline de una línea (negrita, código, links).
+// Los links se restringen a http/https para evitar XSS vía javascript:.
+function renderInline(line) {
+  return line
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+// renderLines procesa un bloque de texto plano línea por línea y produce
+// párrafos, headings, listas, blockquotes y tablas simples.
+function renderLines(block) {
+  const lines = block.split("\n");
+  let html = "";
+  let list = null;
+  let para = [];
+  let table = [];
+
+  const flushPara = () => {
+    if (para.length) {
+      html += "<p>" + para.map(renderInline).join("<br>") + "</p>";
+      para = [];
+    }
+  };
+  const flushList = () => {
+    if (list) {
+      html += "</" + list.tag + ">";
+      list = null;
+    }
+  };
+  const flushTable = () => {
+    if (table.length) {
+      const head = table[0];
+      const body = table.slice(1);
+      html += "<table><thead><tr>" + head.map((c) => "<th>" + renderInline(c) + "</th>").join("") + "</tr></thead>";
+      if (body.length) {
+        html += "<tbody>" + body.map((row) => "<tr>" + row.map((c) => "<td>" + renderInline(c) + "</td>").join("") + "</tr>").join("") + "</tbody>";
+      }
+      html += "</table>";
+      table = [];
+    }
+  };
+
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+
+    let m = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (m) {
+      flushPara();
+      flushList();
+      flushTable();
+      const lvl = m[1].length;
+      html += "<h" + lvl + ">" + renderInline(m[2]) + "</h" + lvl + ">";
+      continue;
+    }
+
+    m = /^&gt;\s?(.*)$/.exec(line);
+    if (m) {
+      flushPara();
+      flushList();
+      flushTable();
+      html += "<blockquote><p>" + renderInline(m[1]) + "</p></blockquote>";
+      continue;
+    }
+
+    m = /^[-*]\s+(.*)$/.exec(line);
+    if (m) {
+      flushPara();
+      flushTable();
+      if (!list || list.tag !== "ul") {
+        flushList();
+        html += "<ul>";
+        list = { tag: "ul" };
+      }
+      html += "<li>" + renderInline(m[1]) + "</li>";
+      continue;
+    }
+
+    m = /^\d+\.\s+(.*)$/.exec(line);
+    if (m) {
+      flushPara();
+      flushTable();
+      if (!list || list.tag !== "ol") {
+        flushList();
+        html += "<ol>";
+        list = { tag: "ol" };
+      }
+      html += "<li>" + renderInline(m[1]) + "</li>";
+      continue;
+    }
+
+    if (/^\|.*\|$/.test(line)) {
+      flushPara();
+      flushList();
+      const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+      if (cells.length && !cells.every((c) => /^:?-+:?$/.test(c))) {
+        table.push(cells);
+      }
+      continue;
+    }
+
+    if (table.length && line.trim() === "") {
+      flushTable();
+      continue;
+    }
+
+    if (line.trim() === "") {
+      flushPara();
+      flushList();
+      flushTable();
+      continue;
+    }
+
+    if (table.length) flushTable();
+    flushList();
+    para.push(line);
+  }
+
+  flushPara();
+  flushList();
+  flushTable();
+  return html;
+}
+
+// markdownLite: escapa HTML, detecta bloques de código (```...```), y delega el
+// resto a renderLines (headings, listas, tablas, links, negrita, inline code).
+// Suficiente para un chat sin arrastrar una librería.
 function markdownLite(text) {
   const escaped = escapeHtml(text);
   const parts = escaped.split(/```/);
+  const unclosed = parts.length % 2 === 0;
   let out = "";
   for (let i = 0; i < parts.length; i++) {
-    if (i % 2 === 1) {
+    const openFence = unclosed && i === parts.length - 1;
+    if (i % 2 === 1 && !openFence) {
       out += "<pre><code>" + parts[i] + "</code></pre>";
     } else {
-      out += parts[i]
-        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-        .replace(/`([^`]+)`/g, "<code>$1</code>")
-        .replace(/\n/g, "<br>");
+      out += renderLines(parts[i]);
     }
   }
   return out;
@@ -91,8 +217,17 @@ function contentToHTML(content) {
   return "";
 }
 
-function scrollToBottom() {
+function isNearBottom() {
+  return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+}
+
+function scrollToBottom(force) {
+  if (!force && !isNearBottom()) return;
   messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function updateEmptyState() {
+  chatEmptyEl.hidden = messagesEl.children.length > 0;
 }
 
 function setStatus(ok, text) {
@@ -143,7 +278,8 @@ function addMessage(role, html, className) {
   bubble.innerHTML = html;
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
-  scrollToBottom();
+  scrollToBottom(true);
+  updateEmptyState();
   return bubble;
 }
 
@@ -170,9 +306,9 @@ function createAssistant() {
   bubble.appendChild(reasoning);
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
-  scrollToBottom();
+  scrollToBottom(true);
 
-  return {
+  const el = {
     wrap,
     reasoning,
     reasoningPre: reasoning.querySelector("pre"),
@@ -180,11 +316,41 @@ function createAssistant() {
     contentText: "",
     reasoningText: "",
   };
+
+  el._renderTimer = null;
+  el._dirty = false;
+  el.scheduleRender = function () {
+    el._dirty = true;
+    if (el._renderTimer) return;
+    el._renderTimer = setTimeout(function () {
+      el._renderTimer = null;
+      if (!el._dirty) return;
+      el._dirty = false;
+      renderInto(el.content, el.contentText);
+    }, 60);
+  };
+  el.flushRender = function () {
+    if (el._renderTimer) {
+      clearTimeout(el._renderTimer);
+      el._renderTimer = null;
+    }
+    if (el._dirty) {
+      el._dirty = false;
+      renderInto(el.content, el.contentText);
+    }
+  };
+  el.dispose = function () {
+    if (el._renderTimer) clearTimeout(el._renderTimer);
+    el._renderTimer = null;
+    el._dirty = false;
+  };
+
+  return el;
 }
 
 function renderInto(el, text) {
   el.innerHTML = markdownLite(text);
-  scrollToBottom();
+  scrollToBottom(false);
 }
 
 // buildUserContent compone el content del mensaje user: string plano cuando no
@@ -227,9 +393,11 @@ async function sendMessage() {
   sendBtn.disabled = true;
   inputEl.disabled = true;
   attachBtn.disabled = true;
+  typingEl.hidden = false;
 
   const headers = { "Content-Type": "application/json" };
   if (activeConvId) headers["X-Conversation-ID"] = activeConvId;
+  messagesEl.setAttribute("aria-busy", "true");
 
   try {
     const res = await fetch("/v1/chat/completions", {
@@ -264,11 +432,13 @@ async function sendMessage() {
       }
     }
 
+    assistant.flushRender();
     if (assistant.contentText.trim() !== "") {
       history.push({ role: "assistant", content: assistant.contentText });
     }
     refreshConversations();
   } catch (err) {
+    assistant.dispose();
     assistant.wrap && assistant.wrap.remove();
     addMessage(
       "assistant",
@@ -280,6 +450,8 @@ async function sendMessage() {
     sendBtn.disabled = false;
     inputEl.disabled = false;
     attachBtn.disabled = false;
+    typingEl.hidden = true;
+    messagesEl.removeAttribute("aria-busy");
     inputEl.focus();
   }
 }
@@ -299,8 +471,8 @@ function handleSSE(raw, assistant) {
     }
 
     if (chunk.error) {
-      assistant.content.innerHTML += markdownLite("\n\n**Error:** " + chunk.error.message);
-      scrollToBottom();
+      assistant.contentText += "\n\n**Error:** " + chunk.error.message;
+      assistant.scheduleRender();
       continue;
     }
     if (!chunk.choices || chunk.choices.length === 0) continue;
@@ -310,17 +482,17 @@ function handleSSE(raw, assistant) {
       assistant.reasoning.style.display = "";
       assistant.reasoningText += delta.reasoning_content;
       assistant.reasoningPre.textContent = assistant.reasoningText;
-      scrollToBottom();
+      scrollToBottom(false);
     }
     if (delta.content) {
       assistant.contentText += delta.content;
-      renderInto(assistant.content, assistant.contentText);
+      assistant.scheduleRender();
     }
     if (delta.tool_calls && delta.tool_calls.length > 0) {
       const names = delta.tool_calls.map((tc) => tc.function && tc.function.name).filter(Boolean);
       if (names.length > 0) {
         assistant.contentText += "\n\n_[Herramienta: " + names.join(", ") + "]_";
-        renderInto(assistant.content, assistant.contentText);
+        assistant.scheduleRender();
       }
     }
   }
@@ -405,7 +577,7 @@ function renderAttachments() {
     info.append(name, meta);
 
     const remove = document.createElement("button");
-    remove.className = "att-remove";
+    remove.className = "btn btn-danger att-remove";
     remove.textContent = "×";
     remove.title = "Quitar adjunto";
     remove.addEventListener("click", () => {
@@ -439,8 +611,13 @@ function renderConversationList() {
   sidebarEmptyEl.hidden = conversations.length > 0;
   for (const conv of conversations) {
     const li = document.createElement("li");
-    li.className = "conv-item" + (conv.id === activeConvId ? " active" : "");
+    const active = conv.id === activeConvId;
+    li.className = "conv-item" + (active ? " active" : "");
     li.dataset.id = conv.id;
+    li.tabIndex = 0;
+    li.setAttribute("role", "button");
+    li.setAttribute("aria-label", "Conversación: " + (conv.title || "(sin título)"));
+    if (active) li.setAttribute("aria-current", "true");
 
     const title = document.createElement("span");
     title.className = "conv-title";
@@ -452,9 +629,10 @@ function renderConversationList() {
     meta.textContent = formatWhen(conv.updated_at) + " · " + conv.messages_count + " msg";
 
     const del = document.createElement("button");
-    del.className = "conv-delete";
+    del.className = "btn btn-danger conv-delete";
     del.textContent = "🗑";
     del.title = "Eliminar conversación";
+    del.setAttribute("aria-label", "Eliminar conversación " + (conv.title || "(sin título)"));
     del.addEventListener("click", (event) => {
       event.stopPropagation();
       deleteConversation(conv.id);
@@ -463,6 +641,18 @@ function renderConversationList() {
     li.append(title, meta, del);
     li.addEventListener("click", () => selectConversation(conv.id));
     li.addEventListener("dblclick", () => renameConversation(conv.id));
+    li.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectConversation(conv.id);
+      } else if (event.key === "F2") {
+        event.preventDefault();
+        renameConversation(conv.id);
+      } else if (event.key === "Delete") {
+        event.preventDefault();
+        deleteConversation(conv.id);
+      }
+    });
     convListEl.appendChild(li);
   }
 }
@@ -473,6 +663,7 @@ function newChat() {
   history = [];
   messagesEl.innerHTML = "";
   clearAttachments();
+  updateEmptyState();
   renderConversationList();
   closeDrawers();
   inputEl.focus();
@@ -495,6 +686,7 @@ async function selectConversation(id) {
       const role = msg.role === "user" ? "user" : "assistant";
       addMessage(role, contentToHTML(msg.content));
     }
+    updateEmptyState();
     renderConversationList();
     closeDrawers();
   } catch {
@@ -511,6 +703,7 @@ async function deleteConversation(id) {
       history = [];
       messagesEl.innerHTML = "";
       clearAttachments();
+      updateEmptyState();
     }
     refreshConversations();
   } catch {
@@ -541,33 +734,61 @@ async function renameConversation(id) {
 // ---------------------------------------------------------------------------
 
 function closeDrawers() {
+  const hadOpen = sidebar.classList.contains("open") || configPanel.classList.contains("open");
   sidebar.classList.remove("open");
   configPanel.classList.remove("open");
   sidebarOverlay.hidden = true;
   configOverlay.hidden = true;
   sidebarToggle.setAttribute("aria-expanded", "false");
   configToggle.setAttribute("aria-expanded", "false");
+  if (hadOpen && drawerFocusReturnEl) {
+    drawerFocusReturnEl.focus();
+    drawerFocusReturnEl = null;
+  }
+}
+
+function openDrawer(drawer, overlay, trigger) {
+  drawerFocusReturnEl = trigger;
+  drawer.classList.add("open");
+  overlay.hidden = false;
+  trigger.setAttribute("aria-expanded", "true");
+  const first = drawer.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  (first || drawer).focus();
 }
 
 function toggleSidebar() {
   if (window.matchMedia(WIDE_QUERY).matches) {
     app.classList.toggle("no-sidebar");
+    sidebarToggle.setAttribute("aria-expanded", app.classList.contains("no-sidebar") ? "false" : "true");
     return;
   }
-  const open = sidebar.classList.toggle("open");
-  sidebarOverlay.hidden = !open;
-  sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (sidebar.classList.contains("open")) {
+    closeDrawers();
+  } else {
+    openDrawer(sidebar, sidebarOverlay, sidebarToggle);
+  }
 }
 
 function toggleConfig() {
   if (window.matchMedia(WIDE_QUERY).matches) {
     app.classList.toggle("no-config");
+    configToggle.setAttribute("aria-expanded", app.classList.contains("no-config") ? "false" : "true");
     return;
   }
-  const open = configPanel.classList.toggle("open");
-  configOverlay.hidden = !open;
-  configToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (configPanel.classList.contains("open")) {
+    closeDrawers();
+  } else {
+    openDrawer(configPanel, configOverlay, configToggle);
+  }
 }
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (sidebar.classList.contains("open") || configPanel.classList.contains("open")) {
+    event.preventDefault();
+    closeDrawers();
+  }
+});
 
 // Al pasar de narrow (drawer abierto) a wide, se limpian los estados de drawer.
 window.addEventListener("resize", () => {
@@ -576,6 +797,7 @@ window.addEventListener("resize", () => {
     configPanel.classList.remove("open");
     sidebarOverlay.hidden = true;
     configOverlay.hidden = true;
+    drawerFocusReturnEl = null;
   }
 });
 
@@ -624,6 +846,7 @@ async function refreshModels() {
   } catch {
     select.innerHTML = '<option value="">(error de conexión)</option>';
   }
+  syncCurrentModel();
 }
 
 // ---------------------------------------------------------------------------
@@ -793,10 +1016,29 @@ if (refreshBtn) {
   refreshBtn.addEventListener("click", refreshModels);
 }
 
+const modelSelect = document.getElementById("model-select");
+const currentModelBtn = document.getElementById("current-model");
+
+function syncCurrentModel() {
+  if (!currentModelBtn || !modelSelect) return;
+  const v = modelSelect.value;
+  currentModelBtn.textContent = v;
+  currentModelBtn.title = v ? "Modelo activo: " + v : "Sin modelo seleccionado. Abrí configuración para elegir.";
+  currentModelBtn.hidden = !v;
+}
+
+if (currentModelBtn) {
+  currentModelBtn.addEventListener("click", toggleConfig);
+}
+if (modelSelect) {
+  modelSelect.addEventListener("change", syncCurrentModel);
+}
+
 document.querySelectorAll(".detect-models").forEach((btn) => {
   btn.addEventListener("click", () => detectModels(btn.dataset.upstream));
 });
 
 // Arranque
+updateEmptyState();
 loadConfig();
 refreshConversations();
