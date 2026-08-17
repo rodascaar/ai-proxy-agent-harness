@@ -760,9 +760,13 @@ async function selectConversation(id) {
     history = conv.messages.map((m) => ({ role: m.role, content: m.content }));
     messagesEl.innerHTML = "";
     clearAttachments();
-    for (const msg of history) {
+    for (const msg of conv.messages) {
       const role = msg.role === "user" ? "user" : "assistant";
-      addMessage(role, contentToHTML(msg.content));
+      let html = contentToHTML(msg.content);
+      if (msg.role === "assistant" && msg.reasoning_content) {
+        html += '<details class="reasoning"><summary>Razonamiento</summary><pre>' + escapeHtml(msg.reasoning_content) + "</pre></details>";
+      }
+      addMessage(role, html);
     }
     updateEmptyState();
     renderConversationList();

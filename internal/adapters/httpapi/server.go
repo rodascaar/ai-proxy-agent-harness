@@ -193,6 +193,7 @@ func (s *Server) nonStreamingChatCompletion(w http.ResponseWriter, r *http.Reque
 	}
 
 	finalContent := strings.Join(content, "")
+	finalReasoning := strings.Join(reasoning, "")
 	paused := len(toolCalls) > 0
 	if err := s.service.Persist(run, paused, finalContent); err != nil {
 		s.logger.Error("persisting session", "request_id", requestIDFrom(r.Context()), "err", err)
@@ -200,7 +201,7 @@ func (s *Server) nonStreamingChatCompletion(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if !paused {
-		s.recordAssistantTurn(r, run, convID, finalContent)
+		s.recordAssistantTurn(r, run, convID, finalContent, finalReasoning)
 	}
 
 	response := openai.ChatCompletionResponse{
@@ -213,7 +214,7 @@ func (s *Server) nonStreamingChatCompletion(w http.ResponseWriter, r *http.Reque
 			Message: openai.ResponseMessage{
 				Role:             openai.RoleAssistant,
 				Content:          stringPtr(finalContent),
-				ReasoningContent: s.reasoningPtr(reasoning),
+				ReasoningContent: s.reasoningPtr(finalReasoning),
 				ToolCalls:        toolCalls,
 			},
 			FinishReason: finishReason(paused),
@@ -242,10 +243,11 @@ func (s *Server) streamChatCompletion(w http.ResponseWriter, r *http.Request, ru
 		return
 	}
 
-	var content strings.Builder
+	var content, reasoning strings.Builder
 	err := s.service.Consume(r.Context(), run, func(ev engine.Event) error {
 		switch ev.Kind {
 		case engine.EventReasoning:
+			reasoning.WriteString(ev.Text)
 			if !s.exposeReasoning {
 				return nil
 			}
@@ -294,18 +296,18 @@ func (s *Server) streamChatCompletion(w http.ResponseWriter, r *http.Request, ru
 		_ = s.writeDone(w, flusher)
 		return
 	}
-	s.recordAssistantTurn(r, run, convID, content.String())
+	s.recordAssistantTurn(r, run, convID, content.String(), reasoning.String())
 	_ = s.writeChunk(w, flusher, finalChunk(model, chunkID, "stop"))
 	_ = s.writeDone(w, flusher)
 }
 
 // reasoningPtr devuelve el reasoning acumulado si está configurado exponerlo;
 // si no, nil.
-func (s *Server) reasoningPtr(parts []string) *string {
-	if !s.exposeReasoning || len(parts) == 0 {
+func (s *Server) reasoningPtr(text string) *string {
+	if !s.exposeReasoning || text == "" {
 		return nil
 	}
-	return stringPtr(strings.Join(parts, ""))
+	return stringPtr(text)
 }
 
 // ---------------------------------------------------------------------------

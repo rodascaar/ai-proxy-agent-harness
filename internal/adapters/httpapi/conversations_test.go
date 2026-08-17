@@ -97,6 +97,9 @@ func TestChatRecordsConversationWithHeader(t *testing.T) {
 	if conv.Messages[1].Role != openai.RoleAssistant || conv.Messages[1].Content.Text != "respuesta" {
 		t.Errorf("unexpected assistant message %#v", conv.Messages[1])
 	}
+	if conv.Messages[1].ReasoningContent == nil || *conv.Messages[1].ReasoningContent == "" {
+		t.Errorf("expected reasoning_content persisted on the assistant message, got %#v", conv.Messages[1])
+	}
 }
 
 func TestSecondTurnAppendsWithoutDuplicating(t *testing.T) {

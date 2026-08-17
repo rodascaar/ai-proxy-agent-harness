@@ -123,9 +123,10 @@ func (s *Server) recordUserTurn(r *http.Request, run *service.PreparedRun, convI
 	}
 }
 
-// recordAssistantTurn persiste el contenido final del assistant en la
-// conversación, una vez que el run terminó (no pausado) con contenido.
-func (s *Server) recordAssistantTurn(r *http.Request, run *service.PreparedRun, convID, finalContent string) {
+// recordAssistantTurn persiste el contenido final (y el reasoning, si se
+// expone) del assistant en la conversación, una vez que el run terminó (no
+// pausado) con contenido.
+func (s *Server) recordAssistantTurn(r *http.Request, run *service.PreparedRun, convID, finalContent, finalReasoning string) {
 	if s.conversations == nil || convID == "" || !conversation.ValidateID(convID) {
 		return
 	}
@@ -133,6 +134,9 @@ func (s *Server) recordAssistantTurn(r *http.Request, run *service.PreparedRun, 
 		return
 	}
 	message := openai.Message{Role: openai.RoleAssistant, Content: openai.NewTextContent(finalContent)}
+	if reasoning := s.reasoningPtr(finalReasoning); reasoning != nil {
+		message.ReasoningContent = reasoning
+	}
 	if _, err := s.conversations.Append(r.Context(), convID, run.Model, []openai.Message{message}); err != nil {
 		s.logger.Warn("recording assistant turn in conversation", "request_id", requestIDFrom(r.Context()), "conversation", convID, "err", err)
 	}
