@@ -191,3 +191,20 @@ es una mejora de este proxy sobre el comportamiento base.
 - [x] `webui`: red de seguridad global (`overflow-x:hidden` en html/body, status del topbar con ellipsis en móvil)
 - [x] `gofmt` + `go vet` + `go test -race ./...` + `golangci-lint` limpios
 
+
+## Fase 12 — Persistencia SQLite única (sesiones + conversaciones)
+
+- [x] `go.mod`: dependencia `modernc.org/sqlite v1.56.0` (SQLite puro Go, sin CGO; compatible go 1.26 darwin/arm64)
+- [x] `core/conversation`: dominio del historial (`Conversation`/`Summary`, `ValidateID` anti path-traversal, `DeriveTitle`, `ErrNotFound`) + puerto `conversation.Store` (`List`/`Get`/`Append`/`Rename`/`Delete`)
+- [x] `adapters/dbstore`: `Open` con DSN de PRAGMA por-conexión (`journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`, `synchronous=NORMAL`, `_txlock=immediate`) y pool de UNA conexión (SQLite single-writer)
+- [x] `adapters/dbstore`: migraciones embebidas con `//go:embed` + tabla `schema_migrations` (idempotentes, una tx por versión)
+- [x] `adapters/dbstore`: FTS5 sobre los mensajes (`messages_fts` contentful + triggers de insert/delete por rowid; el comando especial 'delete' solo existe para tablas contentless)
+- [x] `adapters/dbstore/sessions`: `Save` = upsert + evicción TTL + overflow de `max_sessions` en la misma tx; `FindMatching` = query indexada con la cadena de checkpoints materializada como tabla VALUES (match posicional `chain[checkpoint_len-1]`)
+- [x] `adapters/dbstore/conversations`: `Append` lazy con título derivado (sin reescribir el transcript), `List` con conteo de mensajes en subquery, `Delete` con cascade FK
+- [x] `adapters/dbstore`: import legado de `.sessions/*.md` y `conversations/*.json` al primer arranque si las tablas están vacías (idempotente); sesiones importadas con `last_used_at` reetiquetado a "ahora" para no caer en la evicción TTL
+- [x] `service.Prepare`: comparación de re-validación por contenido (`sameResumeCheckpoint`), no por puntero — los stores ya no devuelven el mismo objeto en cada lectura
+- [x] `config`: `DB_PATH` (default `data/proxy.db`) reemplaza a `SESSIONS_DIR`/`CONVERSATIONS_DIR`; `.env.example`, README y `.gitignore` (`/data/`) actualizados
+- [x] `cmd/proxy` + `httpapi`: wiring con una sola instancia `dbstore.Open` como `session.Store` y `conversation.Store`; eliminados los adaptadores `sessionstore/md` y `conversationstore`
+- [x] Tests `dbstore`: persistencia y reopen, matcheo por prefijo/longitud, TTL, evicción overflow, CRUD, roundtrip multimodal, migraciones idempotentes, import legado
+- [x] Benchmarks `dbstore`: `SaveSession`, `FindMatching`, `AppendMessage` (~50µs, ~146µs, ~265µs en M1)
+- [x] `gofmt` + `go vet` + `go test -race ./...` + `golangci-lint` limpios

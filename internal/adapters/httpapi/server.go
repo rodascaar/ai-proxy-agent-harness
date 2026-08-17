@@ -16,11 +16,11 @@ import (
 	"strings"
 	"time"
 
-	"ai-proxy-agent-harness/internal/adapters/conversationstore"
 	"ai-proxy-agent-harness/internal/adapters/upstream"
 	"ai-proxy-agent-harness/internal/adapters/webui"
 	"ai-proxy-agent-harness/internal/application/service"
 	"ai-proxy-agent-harness/internal/config"
+	"ai-proxy-agent-harness/internal/core/conversation"
 	"ai-proxy-agent-harness/internal/core/engine"
 	"ai-proxy-agent-harness/internal/core/openai"
 	"ai-proxy-agent-harness/internal/core/ports"
@@ -46,7 +46,7 @@ type Server struct {
 	exposeReasoning bool
 	cfg             *config.Config
 	modelCache      *modelCache
-	conversations   *conversationstore.Store
+	conversations   conversation.Store
 	logger          *slog.Logger
 	handler         http.Handler
 }
@@ -93,7 +93,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // SetConversationStore inyecta el store de conversaciones del chat de la Web
 // UI (historial de conversaciones). Se fija desde el composition root; sin él,
 // los endpoints de conversaciones responden 503 y el recording se omite.
-func (s *Server) SetConversationStore(store *conversationstore.Store) {
+func (s *Server) SetConversationStore(store conversation.Store) {
 	s.conversations = store
 }
 
@@ -155,7 +155,7 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	// el turno quede en el historial persistido. Un request externo (SDK,
 	// agentes) sin el header sigue el camino clásico sin recording.
 	convID := r.Header.Get(conversationIDHeader)
-	if convID != "" && conversationstore.ValidateID(convID) {
+	if convID != "" && conversation.ValidateID(convID) {
 		s.recordUserTurn(r, run, convID)
 	}
 

@@ -8,12 +8,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"ai-proxy-agent-harness/internal/adapters/dbstore"
 	"ai-proxy-agent-harness/internal/adapters/httpapi"
-	"ai-proxy-agent-harness/internal/adapters/sessionstore/md"
 	"ai-proxy-agent-harness/internal/adapters/upstream"
 	"ai-proxy-agent-harness/internal/application/service"
 	"ai-proxy-agent-harness/internal/config"
@@ -25,12 +26,13 @@ func noopLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func newTestServer(t *testing.T, llm *fakellm.Fake, exposeReasoning bool) (*httpapi.Server, *md.Store) {
+func newTestServer(t *testing.T, llm *fakellm.Fake, exposeReasoning bool) (*httpapi.Server, *dbstore.Store) {
 	t.Helper()
-	store, err := md.New(t.TempDir(), time.Minute, 100, noopLogger())
+	store, err := dbstore.Open(filepath.Join(t.TempDir(), "proxy.db"), time.Minute, 100, noopLogger())
 	if err != nil {
-		t.Fatalf("md.New() error: %v", err)
+		t.Fatalf("dbstore.Open() error: %v", err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	svc := service.New(llm, store, "test-model", 3, 25, noopLogger())
 	cfg := &config.Config{
 		UpstreamBaseURL:        "http://localhost:11434/v1",
@@ -43,8 +45,7 @@ func newTestServer(t *testing.T, llm *fakellm.Fake, exposeReasoning bool) (*http
 		SessionTTL:             time.Minute,
 		MaxSessions:            100,
 		ExposeReasoningContent: exposeReasoning,
-		SessionsDir:            ".sessions",
-		ConversationsDir:       "conversations",
+		DBPath:                 "data/proxy.db",
 		MaxFileBytes:           20 << 20,
 	}
 	return httpapi.New(svc, cfg, nil, noopLogger()), store

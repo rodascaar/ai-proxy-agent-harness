@@ -4,12 +4,13 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"ai-proxy-agent-harness/internal/adapters/dbstore"
 	"ai-proxy-agent-harness/internal/adapters/httpapi"
-	"ai-proxy-agent-harness/internal/adapters/sessionstore/md"
 	"ai-proxy-agent-harness/internal/application/service"
 	"ai-proxy-agent-harness/internal/config"
 	"ai-proxy-agent-harness/internal/core/openai"
@@ -43,10 +44,11 @@ func TestGetConfig(t *testing.T) {
 
 func TestGetConfigAPIKeysSetPerUpstream(t *testing.T) {
 	llm := fakellm.New()
-	store, err := md.New(t.TempDir(), time.Minute, 100, noopLogger())
+	store, err := dbstore.Open(filepath.Join(t.TempDir(), "proxy.db"), time.Minute, 100, noopLogger())
 	if err != nil {
-		t.Fatalf("md.New() error: %v", err)
+		t.Fatalf("dbstore.Open() error: %v", err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	svc := service.New(llm, store, "test-model", 3, 25, noopLogger())
 	cfg := &config.Config{
 		Upstreams: []config.Upstream{
@@ -55,7 +57,7 @@ func TestGetConfigAPIKeysSetPerUpstream(t *testing.T) {
 			{BaseURL: "http://c/v1", APIKey: "k3", Models: []string{"c"}},
 		},
 		RequestTimeout: time.Minute,
-		SessionsDir:    ".sessions",
+		DBPath:         "data/proxy.db",
 		MaxFileBytes:   20 << 20,
 	}
 	handler := httpapi.New(svc, cfg, nil, noopLogger())
@@ -150,16 +152,17 @@ func TestModelsPassthrough(t *testing.T) {
 	llm := fakellm.New().
 		Completion(`{"atomic": true, "subtasks": []}`).
 		StreamResponse([]string{"final"}, nil)
-	store, err := md.New(t.TempDir(), time.Minute, 100, noopLogger())
+	store, err := dbstore.Open(filepath.Join(t.TempDir(), "proxy.db"), time.Minute, 100, noopLogger())
 	if err != nil {
-		t.Fatalf("md.New() error: %v", err)
+		t.Fatalf("dbstore.Open() error: %v", err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	svc := service.New(llm, store, "test-model", 3, 25, noopLogger())
 	cfg := &config.Config{
 		UpstreamBaseURL: "http://localhost:11434/v1",
 		UpstreamModel:   "test-model",
 		RequestTimeout:  time.Minute,
-		SessionsDir:     ".sessions",
+		DBPath:          "data/proxy.db",
 		MaxFileBytes:    20 << 20,
 	}
 	lister := &fakeLister{models: []openai.ModelDescriptor{

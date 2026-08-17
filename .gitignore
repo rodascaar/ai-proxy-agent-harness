@@ -5,10 +5,11 @@
 # Entorno
 .env
 
-# Sesiones del proxy
-/.sessions/
+# Base de datos SQLite del proxy (sesiones + conversaciones)
+/data/
 
-# Historial de conversaciones
+# Datos legados (se importan a la base al primer arranque)
+/.sessions/
 /conversations/
 
 # Tooling

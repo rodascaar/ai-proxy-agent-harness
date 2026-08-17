@@ -7,21 +7,19 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"ai-proxy-agent-harness/internal/adapters/conversationstore"
+	"ai-proxy-agent-harness/internal/adapters/dbstore"
 	"ai-proxy-agent-harness/internal/adapters/httpapi"
+	"ai-proxy-agent-harness/internal/core/conversation"
 	"ai-proxy-agent-harness/internal/core/openai"
 	"ai-proxy-agent-harness/internal/testutil/fakellm"
 )
 
 // newTestServerWithConversations construye el handler de tests con un
-// conversationstore real en un directorio temporal.
-func newTestServerWithConversations(t *testing.T, llm *fakellm.Fake) (*httpapi.Server, *conversationstore.Store) {
+// dbstore real (SQLite) en un directorio temporal sirviendo tanto sesiones
+// como conversaciones.
+func newTestServerWithConversations(t *testing.T, llm *fakellm.Fake) (*httpapi.Server, *dbstore.Store) {
 	t.Helper()
-	handler, _ := newTestServer(t, llm, true)
-	store, err := conversationstore.New(t.TempDir(), noopLogger())
-	if err != nil {
-		t.Fatalf("conversationstore.New(): %v", err)
-	}
+	handler, store := newTestServer(t, llm, true)
 	handler.SetConversationStore(store)
 	return handler, store
 }
@@ -148,7 +146,7 @@ func TestConversationsCRUD(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 	payload := decodeResponse[struct {
-		Conversations []conversationstore.Summary `json:"conversations"`
+		Conversations []conversation.Summary `json:"conversations"`
 	}](t, rec)
 	if len(payload.Conversations) != 0 {
 		t.Errorf("expected empty list, got %d", len(payload.Conversations))
@@ -164,7 +162,7 @@ func TestConversationsCRUD(t *testing.T) {
 
 	rec = doJSON(t, handler, http.MethodGet, "/api/conversations", "")
 	payload = decodeResponse[struct {
-		Conversations []conversationstore.Summary `json:"conversations"`
+		Conversations []conversation.Summary `json:"conversations"`
 	}](t, rec)
 	if len(payload.Conversations) != 1 || payload.Conversations[0].ID != testConversationID {
 		t.Errorf("expected 1 conversation, got %#v", payload.Conversations)
@@ -192,7 +190,7 @@ func TestConversationsCRUD(t *testing.T) {
 		t.Fatalf("expected 200 on rename, got %d: %s", rec.Code, rec.Body.String())
 	}
 	renamed := decodeResponse[struct {
-		Conversation conversationstore.Conversation `json:"conversation"`
+		Conversation conversation.Conversation `json:"conversation"`
 	}](t, rec)
 	if renamed.Conversation.Title != "Nuevo título" {
 		t.Errorf("expected renamed title, got %q", renamed.Conversation.Title)

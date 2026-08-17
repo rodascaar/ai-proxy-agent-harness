@@ -4,11 +4,12 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
-	"ai-proxy-agent-harness/internal/adapters/sessionstore/md"
+	"ai-proxy-agent-harness/internal/adapters/dbstore"
 	"ai-proxy-agent-harness/internal/application/service"
 	"ai-proxy-agent-harness/internal/core/engine"
 	"ai-proxy-agent-harness/internal/core/openai"
@@ -20,12 +21,13 @@ func noopLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func newService(t *testing.T, llm ports.LLMClient) (*service.Service, *md.Store) {
+func newService(t *testing.T, llm ports.LLMClient) (*service.Service, *dbstore.Store) {
 	t.Helper()
-	store, err := md.New(t.TempDir(), time.Minute, 100, noopLogger())
+	store, err := dbstore.Open(filepath.Join(t.TempDir(), "proxy.db"), time.Minute, 100, noopLogger())
 	if err != nil {
-		t.Fatalf("md.New() error: %v", err)
+		t.Fatalf("dbstore.Open() error: %v", err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	svc := service.New(llm, store, "test-model", 3, 25, noopLogger())
 	return svc, store
 }

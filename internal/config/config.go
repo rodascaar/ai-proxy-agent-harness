@@ -33,8 +33,7 @@ const (
 	defaultRequestTimeout        = 120 * time.Second
 	defaultSessionTTL            = 30 * time.Minute
 	defaultMaxSessions           = 200
-	defaultSessionsDir           = ".sessions"
-	defaultConversationsDir      = "conversations"
+	defaultDBPath                = "data/proxy.db"
 	defaultMaxFileBytes          = 20 << 20
 	defaultLogLevel              = "info"
 	defaultDebateRounds          = 2
@@ -76,8 +75,7 @@ var ConfigKeys = []string{
 	"REQUEST_TIMEOUT_SECONDS",
 	"SESSION_TTL_SECONDS",
 	"MAX_SESSIONS",
-	"SESSIONS_DIR",
-	"CONVERSATIONS_DIR",
+	"DB_PATH",
 	"MAX_FILE_BYTES",
 	"EXPOSE_REASONING_CONTENT",
 	"WARMUP_ON_START",
@@ -113,8 +111,7 @@ type Config struct {
 	MaxSessions            int
 	ExposeReasoningContent bool
 	WarmupOnStart          bool
-	SessionsDir            string
-	ConversationsDir       string
+	DBPath                 string
 	MaxFileBytes           int64
 	LogLevel               slog.Level
 	Temperature            float64
@@ -216,8 +213,7 @@ func (c *Config) Values() map[string]string {
 		"REQUEST_TIMEOUT_SECONDS":   formatDuration(c.RequestTimeout),
 		"SESSION_TTL_SECONDS":       formatDuration(c.SessionTTL),
 		"MAX_SESSIONS":              strconv.Itoa(c.MaxSessions),
-		"SESSIONS_DIR":              c.SessionsDir,
-		"CONVERSATIONS_DIR":         c.ConversationsDir,
+		"DB_PATH":                   c.DBPath,
 		"MAX_FILE_BYTES":            strconv.FormatInt(c.MaxFileBytes, 10),
 		"EXPOSE_REASONING_CONTENT":  strconv.FormatBool(c.ExposeReasoningContent),
 		"WARMUP_ON_START":           strconv.FormatBool(c.WarmupOnStart),
@@ -389,8 +385,7 @@ func build(get func(string) (string, bool)) (*Config, error) {
 		MaxSessions:            maxSessions,
 		ExposeReasoningContent: exposeReasoning,
 		WarmupOnStart:          warmup,
-		SessionsDir:            str("SESSIONS_DIR", defaultSessionsDir),
-		ConversationsDir:       str("CONVERSATIONS_DIR", defaultConversationsDir),
+		DBPath:                 str("DB_PATH", defaultDBPath),
 		MaxFileBytes:           maxFileBytes,
 		LogLevel:               level,
 		Temperature:            temperature,
@@ -516,11 +511,8 @@ func (c *Config) validate() error {
 	if c.Temperature < 0 || c.Temperature > 1 {
 		return fmt.Errorf("invalid config: temperature %.2f out of range [0, 1]", c.Temperature)
 	}
-	if strings.TrimSpace(c.SessionsDir) == "" {
-		return errors.New("invalid config: sessions dir must not be empty")
-	}
-	if strings.TrimSpace(c.ConversationsDir) == "" {
-		return errors.New("invalid config: conversations dir must not be empty")
+	if strings.TrimSpace(c.DBPath) == "" {
+		return errors.New("invalid config: db path must not be empty")
 	}
 	if c.MaxFileBytes < 1 {
 		return errors.New("invalid config: max file bytes must be >= 1")

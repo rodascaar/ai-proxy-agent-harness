@@ -138,11 +138,27 @@ func (s *Service) Prepare(req *openai.ChatCompletionRequest) (*PreparedRun, erro
 			lock.Unlock()
 			return nil, fmt.Errorf("rechecking session: %w", err)
 		}
-		if recheck == state && session.IsValidResume(recheck, messages) {
+		// Comparación por contenido, no por puntero: los adaptadores pueden
+		// devolver un objeto nuevo en cada lectura (SQLite deserializa por
+		// query), así que la igualdad de identidad no es la del puntero.
+		if sameResumeCheckpoint(state, recheck) && session.IsValidResume(recheck, messages) {
 			return s.buildResumeRun(recheck, messages, lock), nil
 		}
 		lock.Unlock()
 	}
+}
+
+// sameResumeCheckpoint indica si dos lecturas del store corresponden al mismo
+// checkpoint de la misma sesión. Si un run concurrente reanudó y persistió,
+// el checkpoint cambió (más largo o ya sin fase pendiente) y la comparación
+// falla, forzando a reintentar con el estado vigente.
+func sameResumeCheckpoint(a, b *session.State) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.SessionID == b.SessionID &&
+		a.CheckpointHash == b.CheckpointHash &&
+		a.CheckpointLen == b.CheckpointLen
 }
 
 // Consume ejecuta el run ya preparado, pasando cada evento del motor al

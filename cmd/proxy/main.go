@@ -11,10 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"ai-proxy-agent-harness/internal/adapters/conversationstore"
+	"ai-proxy-agent-harness/internal/adapters/dbstore"
 	"ai-proxy-agent-harness/internal/adapters/httpapi"
 	"ai-proxy-agent-harness/internal/adapters/router"
-	"ai-proxy-agent-harness/internal/adapters/sessionstore/md"
 	"ai-proxy-agent-harness/internal/application/service"
 	"ai-proxy-agent-harness/internal/config"
 )
@@ -29,24 +28,22 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	slog.SetDefault(logger)
 
-	store, err := md.New(cfg.SessionsDir, cfg.SessionTTL, cfg.MaxSessions, logger)
+	// Una sola base SQLite sirve los dos puertos: sesiones de pausa/reanudación
+	// del motor y el historial de conversaciones de la Web UI.
+	db, err := dbstore.Open(cfg.DBPath, cfg.SessionTTL, cfg.MaxSessions, logger)
 	if err != nil {
-		logger.Error("initializing session store", "err", err)
+		logger.Error("initializing sqlite store", "err", err)
 		os.Exit(1)
 	}
+	defer func() { _ = db.Close() }()
+
 	r := router.New(cfg.Upstreams, cfg.RequestTimeout)
-	svc := service.New(r, store, cfg.DefaultModel(), cfg.MaxDecompositionDepth, cfg.MaxToolRoundsPerPhase, logger,
+	svc := service.New(r, db, cfg.DefaultModel(), cfg.MaxDecompositionDepth, cfg.MaxToolRoundsPerPhase, logger,
 		service.WithDebate(cfg.DebateEnabled, cfg.DebateRounds, r),
 		service.WithTemperature(cfg.Temperature),
 	)
 	handler := httpapi.New(svc, cfg, r, logger)
-
-	conversations, err := conversationstore.New(cfg.ConversationsDir, logger)
-	if err != nil {
-		logger.Error("initializing conversation store", "err", err)
-		os.Exit(1)
-	}
-	handler.SetConversationStore(conversations)
+	handler.SetConversationStore(db)
 
 	if cfg.WarmupOnStart {
 		warmup(r, cfg, logger)

@@ -44,15 +44,23 @@ acción, datos falsos de archivos o comandos).
 
 Como una tarea atómica o la síntesis pueden requerir `tool_calls`, el proxy
 guarda en qué punto del árbol se quedó entre una petición HTTP y la siguiente.
-Las sesiones se persisten como **notas markdown** en `SESSIONS_DIR`
-(por defecto `.sessions/`), indexadas por un hash encadenado del historial de
-mensajes, para:
+Las sesiones se persisten en una **única base SQLite** (por defecto
+`data/proxy.db`, driver puro Go sin CGO) en modo **WAL** con
+`journal_mode=WAL`, `synchronous=NORMAL` y `foreign_keys=ON`, indexadas por un
+hash encadenado del historial de mensajes, para:
 
 - reanudar exactamente donde quedó pausado, sin rehacer descomposición ni
   tareas ya resueltas;
 - detectar cuándo una request es un turno nuevo sobre una conversación ya
   completada (y sembrarlo con el resumen de turnos previos);
-- expirar sesiones por TTL y limitar cuántas se mantienen.
+- expirar sesiones por TTL y limitar cuántas se mantienen (evicción dentro de
+  la misma transacción de guardado).
+
+SQLite es *single-writer*: el pool se limita a una conexión, lo que serializa
+lecturas y escrituras y elimina los "database is locked". Al primer arranque
+con la base vacía, los datos de los formatos anteriores (`SESSIONS_DIR`
+`.sessions/*.md` y `CONVERSATIONS_DIR` `conversations/*.json`) se importan
+automáticamente y de forma idempotente.
 
 ## Arquitectura (hexagonal)
 
@@ -60,7 +68,7 @@ mensajes, para:
 cmd/proxy/main.go          → composition root (wiring + graceful shutdown)
 internal/application/      → casos de uso (PrepareRun/Consume/Persist)
 internal/core/             → dominio puro (engine, goal, session, task, content, openai, ports)
-internal/adapters/         → infraestructura (upstream HTTP, sessionstore markdown, httpapi)
+internal/adapters/         → infraestructura (upstream HTTP, dbstore SQLite, httpapi)
 internal/config/           → configuración 12-factor
 internal/prompts/          → prompts de las fases embebidos (español)
 ```
@@ -122,8 +130,9 @@ hace falta saber (ni teclear) los nombres exactos.
 
 ### Historial de conversaciones
 
-La UI guarda un **historial de conversaciones en el servidor** (ledger JSON en
-`CONVERSATIONS_DIR`, por defecto `conversations/`). El sidebar permite crear un
+La UI guarda un **historial de conversaciones en el servidor**, en la misma
+base SQLite que las sesiones (tablas `conversations` + `messages`, con
+búsqueda full-text FTS5 sobre los mensajes). El sidebar permite crear un
 **nuevo chat**, **listar**, **seleccionar**, **renombrar** (doble click) y
 **eliminar** conversaciones. Cada conversación se identifica con un id
 (la UI usa `crypto.randomUUID()`) que se envía en el header `X-Conversation-ID`
@@ -208,8 +217,7 @@ completas en [`.env.example`](.env.example):
 | `REQUEST_TIMEOUT_SECONDS` | `120s` | Timeout por request al upstream |
 | `SESSION_TTL_SECONDS` | `30m` | TTL de las sesiones persistidas |
 | `MAX_SESSIONS` | `200` | Límite de sesiones simultáneas |
-| `SESSIONS_DIR` | `.sessions` | Directorio de notas de sesión (markdown) |
-| `CONVERSATIONS_DIR` | `conversations` | Directorio del ledger JSON de conversaciones (historial del chat) |
+| `DB_PATH` | `data/proxy.db` | Ruta de la base SQLite única (sesiones + conversaciones, modo WAL) |
 | `MAX_FILE_BYTES` | `20971520` | Tamaño máximo (bytes) de archivos subidos a `/api/extract-file` |
 | `EXPOSE_REASONING_CONTENT` | `true` | Expone el razonamiento como `reasoning_content` |
 | `WARMUP_ON_START` | `false` | Verifica el upstream (`/v1/models`) al arrancar |

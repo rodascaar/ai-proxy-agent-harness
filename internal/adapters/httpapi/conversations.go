@@ -6,8 +6,8 @@ import (
 	"io"
 	"net/http"
 
-	"ai-proxy-agent-harness/internal/adapters/conversationstore"
 	"ai-proxy-agent-harness/internal/application/service"
+	"ai-proxy-agent-harness/internal/core/conversation"
 	"ai-proxy-agent-harness/internal/core/openai"
 )
 
@@ -35,12 +35,12 @@ func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if !conversationstore.ValidateID(id) {
+	if !conversation.ValidateID(id) {
 		s.writeError(w, http.StatusBadRequest, "invalid_request_error", "invalid conversation id")
 		return
 	}
 	conv, err := s.conversations.Get(r.Context(), id)
-	if errors.Is(err, conversationstore.ErrNotFound) {
+	if errors.Is(err, conversation.ErrNotFound) {
 		s.writeError(w, http.StatusNotFound, "not_found_error", "conversation not found")
 		return
 	}
@@ -59,7 +59,7 @@ func (s *Server) renameConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if !conversationstore.ValidateID(id) {
+	if !conversation.ValidateID(id) {
 		s.writeError(w, http.StatusBadRequest, "invalid_request_error", "invalid conversation id")
 		return
 	}
@@ -71,7 +71,7 @@ func (s *Server) renameConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conv, err := s.conversations.Rename(r.Context(), id, body.Title)
-	if errors.Is(err, conversationstore.ErrNotFound) {
+	if errors.Is(err, conversation.ErrNotFound) {
 		s.writeError(w, http.StatusNotFound, "not_found_error", "conversation not found")
 		return
 	}
@@ -90,12 +90,12 @@ func (s *Server) deleteConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if !conversationstore.ValidateID(id) {
+	if !conversation.ValidateID(id) {
 		s.writeError(w, http.StatusBadRequest, "invalid_request_error", "invalid conversation id")
 		return
 	}
 	err := s.conversations.Delete(r.Context(), id)
-	if errors.Is(err, conversationstore.ErrNotFound) {
+	if errors.Is(err, conversation.ErrNotFound) {
 		s.writeError(w, http.StatusNotFound, "not_found_error", "conversation not found")
 		return
 	}
@@ -111,7 +111,7 @@ func (s *Server) deleteConversation(w http.ResponseWriter, r *http.Request) {
 // indicada por el header X-Conversation-ID. Se llama al inicio del run para que
 // el mensaje del usuario quede en el historial aunque el run falle después.
 func (s *Server) recordUserTurn(r *http.Request, run *service.PreparedRun, convID string) {
-	if s.conversations == nil || convID == "" || !conversationstore.ValidateID(convID) {
+	if s.conversations == nil || convID == "" || !conversation.ValidateID(convID) {
 		return
 	}
 	userMessages := trailingUserMessages(run.Messages)
@@ -126,7 +126,7 @@ func (s *Server) recordUserTurn(r *http.Request, run *service.PreparedRun, convI
 // recordAssistantTurn persiste el contenido final del assistant en la
 // conversación, una vez que el run terminó (no pausado) con contenido.
 func (s *Server) recordAssistantTurn(r *http.Request, run *service.PreparedRun, convID, finalContent string) {
-	if s.conversations == nil || convID == "" || !conversationstore.ValidateID(convID) {
+	if s.conversations == nil || convID == "" || !conversation.ValidateID(convID) {
 		return
 	}
 	if finalContent == "" {
