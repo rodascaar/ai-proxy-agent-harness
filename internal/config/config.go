@@ -543,6 +543,11 @@ func (c *Config) validateUpstreams() error {
 			return fmt.Errorf("invalid config: upstream %d: %w", index+1, err)
 		}
 		if len(upstream.Models) == 0 {
+			// El upstream legacy (UPSTREAM_BASE_URL) se reporta con la clave
+			// correcta: UPSTREAM_MODEL, no UPSTREAM_1_MODELS.
+			if index == 0 && upstream.BaseURL == c.UpstreamBaseURL {
+				return errors.New("invalid config: upstream 1 has no models (set UPSTREAM_MODEL)")
+			}
 			return fmt.Errorf("invalid config: upstream %d has no models (set UPSTREAM_%d_MODELS)", index+1, index+1)
 		}
 	}

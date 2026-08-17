@@ -123,8 +123,15 @@ func (s *Store) Close() error {
 // aplican a CADA conexión que el pool abra, y foreign_keys/busy_timeout no se
 // heredan de una ejecución previa. Se usa q.Add (no q.Set) porque Set
 // reemplaza el valor anterior: cada _pragma debe ser un parámetro distinto.
+//
+// OmitHost evita un gotcha de url.URL.String(): con Host vacío y un Path que no
+// empieza con "/", emite "file://data/proxy.db" (doble barra), que SQLite
+// interpreta como un URI con autoridad "data" y rechaza con "invalid uri
+// authority". Con OmitHost el DSN relativo queda "file:data/proxy.db?...", una
+// URI relativa válida. ToSlash normaliza los backslashes de Windows, que en un
+// URI de SQLite son el carácter de escape.
 func buildDSN(path string) string {
-	u := url.URL{Scheme: "file", Path: path}
+	u := url.URL{Scheme: "file", OmitHost: true, Path: filepath.ToSlash(path)}
 	q := u.Query()
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", "foreign_keys(ON)")

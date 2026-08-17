@@ -438,8 +438,8 @@ async function sendMessage(retry) {
 
   setBusyUI(true);
 
-  const headers = { "Content-Type": "application/json" };
-  if (activeConvId) headers["X-Conversation-ID"] = activeConvId;
+  if (!activeConvId) activeConvId = newConversationId();
+  const headers = { "Content-Type": "application/json", "X-Conversation-ID": activeConvId };
   messagesEl.setAttribute("aria-busy", "true");
 
   try {
@@ -497,6 +497,9 @@ async function sendMessage(retry) {
         bubble.appendChild(retryBtn);
       }
     }
+    // El turno user ya quedó guardado al inicio de la request: refrescamos el
+    // sidebar aunque el stream falle, para que la conversación no se pierda.
+    refreshConversations();
   } finally {
     currentController = null;
     setBusyUI(false);
@@ -645,6 +648,29 @@ function renderAttachments() {
 // Conversaciones (historial)
 // ---------------------------------------------------------------------------
 
+// newConversationId genera un id de conversación UUID v4 (cumple
+// conversation.ValidateID). El backend solo persiste el chat si el header
+// X-Conversation-ID viaja en la request: sin id, el primer mensaje de un chat
+// nuevo quedaba sin guardar y se perdía al abrir otro.
+function newConversationId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  if (window.crypto && typeof window.crypto.getRandomValues === "function") {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // versión 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variante RFC 4122
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return (
+    hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) + "-" +
+    hex.slice(16, 20) + "-" + hex.slice(20)
+  );
+}
+
 async function refreshConversations() {
   try {
     const res = await fetch("/api/conversations");
@@ -711,7 +737,7 @@ function renderConversationList() {
 
 function newChat() {
   if (busy) return;
-  activeConvId = null;
+  activeConvId = newConversationId();
   history = [];
   messagesEl.innerHTML = "";
   clearAttachments();
