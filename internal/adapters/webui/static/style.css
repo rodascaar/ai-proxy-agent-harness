@@ -177,6 +177,8 @@ body {
   .app.no-sidebar { grid-template-columns: 1fr 320px; }
   .app.no-config { grid-template-columns: 240px 1fr; }
   .app.no-sidebar.no-config { grid-template-columns: 1fr; }
+  .app.no-sidebar .sidebar { display: none; }
+  .app.no-config .config { display: none; }
 }
 
 /* ---------------------------------------------------------------------------
