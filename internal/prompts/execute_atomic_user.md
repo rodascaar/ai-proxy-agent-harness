@@ -10,6 +10,10 @@
 {context}
 </trabajo_previo>
 
+<tools_disponibles>
+{tools}
+</tools_disponibles>
+
 <tarea_atomica>
 {task}
 </tarea_atomica>

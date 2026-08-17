@@ -158,3 +158,36 @@ es una mejora de este proxy sobre el comportamiento base.
 - [x] Docs: `.env.example` (TEMPERATURE), `README.md` (tabla + nota de enfoque), este checklist
 - [x] `gofmt` + `go vet` + `golangci-lint` + `go test -race ./...` limpios
 
+## Fase 10 — Historial de conversaciones + subida de archivos + UI responsive
+
+- [x] `config`: `CONVERSATIONS_DIR` (default `conversations`) y `MAX_FILE_BYTES` (default `20<<20`) + validación
+- [x] `adapters/conversationstore`: ledger JSON por conversación (create lazy, título derivado del primer mensaje, `List`/`Get`/`Rename`/`Delete`, write atómico temp+rename, archivos corruptos ignorados)
+- [x] `conversationstore`: `ValidateID` (regex `^[a-zA-Z0-9_-]{8,64}$`) — anti path-traversal
+- [x] `httpapi`: `GET /api/conversations`, `GET/PATCH/DELETE /api/conversations/{id}` + recording vía header `X-Conversation-ID`
+- [x] `httpapi`: recording del turno user al inicio del run (sobrevive a fallos del stream) y del assistant al final si no quedó pausado
+- [x] `httpapi`: `POST /api/extract-file` (multipart) — PDF (ledongthuc/pdf), DOCX (stdlib zip+xml), texto plano y código; imágenes como data URL; magic bytes; 413 si excede `MAX_FILE_BYTES`
+- [x] `cmd/proxy`: wiring del conversationstore
+- [x] `webui`: sidebar de historial (listar, nuevo chat, seleccionar, eliminar, renombrar) con `X-Conversation-ID` en el envío
+- [x] `webui`: subida de adjuntos (imagen → data URL client-side; pdf/docx/texto → `/api/extract-file`) con chips removibles
+- [x] `webui`: layout responsive (3 columnas ≥1100px con colapsos; drawers <1100px) + botones con `flex:0 0 auto` y `overflow-wrap:anywhere`
+- [x] Docs: `.env.example` (`CONVERSATIONS_DIR`, `MAX_FILE_BYTES`), `README.md`, `.gitignore` (`/conversations/`), este checklist
+- [x] Tests: store, httpapi (conversations, extract-file, recording) con `-race`
+- [x] `gofmt` + `go vet` + `go test -race ./...` limpios
+- [x] `golangci-lint` + prueba manual de la UI
+
+## Fase 11 — Robustez contra alucinaciones + estabilidad visual
+
+- [x] `prompts`: placeholder `<tools_disponibles>` en ejecución y síntesis — el modelo sabe SIEMPRE si tiene herramientas reales
+- [x] `prompts`: regla explícita — saludos/trivia jamás usan herramientas ni `[[NECESITA_HERRAMIENTA]]`; no simular acciones externas
+- [x] `prompts`: ejemplo de marcador neutralizado (config.yaml → `/opt/data/inventario_2026.dat`) para eliminar el anclaje
+- [x] `engine`: detección del marcador `[[NECESITA_HERRAMIENTA: …]]` en resultados de hoja (regex)
+- [x] `engine`: sin tools del caller → reintento correctivo UNA vez; si persiste → nota honesta de pendiente (nunca fabricar)
+- [x] `engine`: corrección aplicada también en la vía `Resume` (hoja)
+- [x] `engine`: sanitización del marcador en el contexto de síntesis cuando no hay tools (defensa en profundidad)
+- [x] Tests: reintento correctivo, fallback persistente, marcador preservado con tools, helpers + render de prompts con `<tools_disponibles>` con `-race`
+- [x] `webui`: burbujas sin desborde (`overflow-wrap:anywhere` + `word-break`, `pre` contenido, imágenes `max-width:100%`, `max-width:min(82%,760px)`)
+- [x] `webui`: sidebar flex (título con ellipsis garantizado + botón estable), `overflow-x:hidden`
+- [x] `webui`: config sin desbordes (`overflow-x:hidden`, inputs con `text-overflow:ellipsis`, nombres de modelo truncados con `title`)
+- [x] `webui`: red de seguridad global (`overflow-x:hidden` en html/body, status del topbar con ellipsis en móvil)
+- [x] `gofmt` + `go vet` + `go test -race ./...` + `golangci-lint` limpios
+

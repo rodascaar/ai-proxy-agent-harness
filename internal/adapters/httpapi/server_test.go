@@ -25,7 +25,7 @@ func noopLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func newTestServer(t *testing.T, llm *fakellm.Fake, exposeReasoning bool) (http.Handler, *md.Store) {
+func newTestServer(t *testing.T, llm *fakellm.Fake, exposeReasoning bool) (*httpapi.Server, *md.Store) {
 	t.Helper()
 	store, err := md.New(t.TempDir(), time.Minute, 100, noopLogger())
 	if err != nil {
@@ -44,6 +44,8 @@ func newTestServer(t *testing.T, llm *fakellm.Fake, exposeReasoning bool) (http.
 		MaxSessions:            100,
 		ExposeReasoningContent: exposeReasoning,
 		SessionsDir:            ".sessions",
+		ConversationsDir:       "conversations",
+		MaxFileBytes:           20 << 20,
 	}
 	return httpapi.New(svc, cfg, nil, noopLogger()), store
 }

@@ -34,6 +34,8 @@ const (
 	defaultSessionTTL            = 30 * time.Minute
 	defaultMaxSessions           = 200
 	defaultSessionsDir           = ".sessions"
+	defaultConversationsDir      = "conversations"
+	defaultMaxFileBytes          = 20 << 20
 	defaultLogLevel              = "info"
 	defaultDebateRounds          = 2
 	defaultMaxUpstreams          = 3
@@ -75,6 +77,8 @@ var ConfigKeys = []string{
 	"SESSION_TTL_SECONDS",
 	"MAX_SESSIONS",
 	"SESSIONS_DIR",
+	"CONVERSATIONS_DIR",
+	"MAX_FILE_BYTES",
 	"EXPOSE_REASONING_CONTENT",
 	"WARMUP_ON_START",
 	"LOG_LEVEL",
@@ -110,6 +114,8 @@ type Config struct {
 	ExposeReasoningContent bool
 	WarmupOnStart          bool
 	SessionsDir            string
+	ConversationsDir       string
+	MaxFileBytes           int64
 	LogLevel               slog.Level
 	Temperature            float64
 }
@@ -193,6 +199,8 @@ func (c *Config) Values() map[string]string {
 		"SESSION_TTL_SECONDS":       formatDuration(c.SessionTTL),
 		"MAX_SESSIONS":              strconv.Itoa(c.MaxSessions),
 		"SESSIONS_DIR":              c.SessionsDir,
+		"CONVERSATIONS_DIR":         c.ConversationsDir,
+		"MAX_FILE_BYTES":            strconv.FormatInt(c.MaxFileBytes, 10),
 		"EXPOSE_REASONING_CONTENT":  strconv.FormatBool(c.ExposeReasoningContent),
 		"WARMUP_ON_START":           strconv.FormatBool(c.WarmupOnStart),
 		"LOG_LEVEL":                 strings.ToLower(c.LogLevel.String()),
@@ -225,6 +233,17 @@ func build(get func(string) (string, bool)) (*Config, error) {
 			return fallback, nil
 		}
 		v, err := strconv.Atoi(raw)
+		if err != nil {
+			return 0, fmt.Errorf("invalid %s=%q: must be an integer", key, raw)
+		}
+		return v, nil
+	}
+	num64 := func(key string, fallback int64) (int64, error) {
+		raw, ok := get(key)
+		if !ok || raw == "" {
+			return fallback, nil
+		}
+		v, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
 			return 0, fmt.Errorf("invalid %s=%q: must be an integer", key, raw)
 		}
@@ -330,6 +349,10 @@ func build(get func(string) (string, bool)) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	maxFileBytes, err := num64("MAX_FILE_BYTES", defaultMaxFileBytes)
+	if err != nil {
+		return nil, err
+	}
 
 	upstreams := resolveUpstreams(get)
 	cfg := &Config{
@@ -349,6 +372,8 @@ func build(get func(string) (string, bool)) (*Config, error) {
 		ExposeReasoningContent: exposeReasoning,
 		WarmupOnStart:          warmup,
 		SessionsDir:            str("SESSIONS_DIR", defaultSessionsDir),
+		ConversationsDir:       str("CONVERSATIONS_DIR", defaultConversationsDir),
+		MaxFileBytes:           maxFileBytes,
 		LogLevel:               level,
 		Temperature:            temperature,
 	}
@@ -475,6 +500,12 @@ func (c *Config) validate() error {
 	}
 	if strings.TrimSpace(c.SessionsDir) == "" {
 		return errors.New("invalid config: sessions dir must not be empty")
+	}
+	if strings.TrimSpace(c.ConversationsDir) == "" {
+		return errors.New("invalid config: conversations dir must not be empty")
+	}
+	if c.MaxFileBytes < 1 {
+		return errors.New("invalid config: max file bytes must be >= 1")
 	}
 	return nil
 }

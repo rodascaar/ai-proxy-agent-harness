@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"ai-proxy-agent-harness/internal/adapters/conversationstore"
 	"ai-proxy-agent-harness/internal/adapters/upstream"
 	"ai-proxy-agent-harness/internal/adapters/webui"
 	"ai-proxy-agent-harness/internal/application/service"
@@ -45,14 +46,16 @@ type Server struct {
 	exposeReasoning bool
 	cfg             *config.Config
 	modelCache      *modelCache
+	conversations   *conversationstore.Store
 	logger          *slog.Logger
+	handler         http.Handler
 }
 
 // New construye el handler HTTP con sus rutas: la Web UI en la raíz, la API
 // compatible con OpenAI en /v1/* y la configuración en /api/config.
 // lister (opcional) detecta los modelos disponibles del upstream para GET
 // /v1/models; si es nil, se expone solo el modelo por defecto.
-func New(svc *service.Service, cfg *config.Config, lister ports.ModelLister, logger *slog.Logger) http.Handler {
+func New(svc *service.Service, cfg *config.Config, lister ports.ModelLister, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -71,8 +74,27 @@ func New(svc *service.Service, cfg *config.Config, lister ports.ModelLister, log
 	mux.HandleFunc("GET /api/config", s.getConfig)
 	mux.HandleFunc("PUT /api/config", s.putConfig)
 	mux.HandleFunc("POST /api/detect-models", s.detectModels)
+	mux.HandleFunc("GET /api/conversations", s.listConversations)
+	mux.HandleFunc("GET /api/conversations/{id}", s.getConversation)
+	mux.HandleFunc("PATCH /api/conversations/{id}", s.renameConversation)
+	mux.HandleFunc("DELETE /api/conversations/{id}", s.deleteConversation)
+	mux.HandleFunc("POST /api/extract-file", s.extractFile)
 	mux.Handle("/", webui.Handler())
-	return s.requestID(s.recovery(mux))
+	s.handler = s.requestID(s.recovery(mux))
+	return s
+}
+
+// ServeHTTP implementa http.Handler delegando en el mux interno (middlewares
+// ya aplicados).
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.handler.ServeHTTP(w, r)
+}
+
+// SetConversationStore inyecta el store de conversaciones del chat de la Web
+// UI (historial de conversaciones). Se fija desde el composition root; sin él,
+// los endpoints de conversaciones responden 503 y el recording se omite.
+func (s *Server) SetConversationStore(store *conversationstore.Store) {
+	s.conversations = store
 }
 
 // requestID asigna o reutiliza un request id (header X-Request-ID) y lo
@@ -129,16 +151,24 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	defer run.Release()
 
+	// La Web UI marca la conversación del chat con X-Conversation-ID para que
+	// el turno quede en el historial persistido. Un request externo (SDK,
+	// agentes) sin el header sigue el camino clásico sin recording.
+	convID := r.Header.Get(conversationIDHeader)
+	if convID != "" && conversationstore.ValidateID(convID) {
+		s.recordUserTurn(r, run, convID)
+	}
+
 	if req.Stream {
-		s.streamChatCompletion(w, r, run)
+		s.streamChatCompletion(w, r, run, convID)
 		return
 	}
-	s.nonStreamingChatCompletion(w, r, run)
+	s.nonStreamingChatCompletion(w, r, run, convID)
 }
 
 // nonStreamingChatCompletion consume el run entero y devuelve una respuesta
 // única con el contenido, el reasoning (si se expone) y los tool calls.
-func (s *Server) nonStreamingChatCompletion(w http.ResponseWriter, r *http.Request, run *service.PreparedRun) {
+func (s *Server) nonStreamingChatCompletion(w http.ResponseWriter, r *http.Request, run *service.PreparedRun, convID string) {
 	var reasoning, content []string
 	var toolCalls []openai.ToolCall
 	err := s.service.Consume(r.Context(), run, func(ev engine.Event) error {
@@ -169,6 +199,9 @@ func (s *Server) nonStreamingChatCompletion(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusInternalServerError, "server_error", err.Error())
 		return
 	}
+	if !paused {
+		s.recordAssistantTurn(r, run, convID, finalContent)
+	}
 
 	response := openai.ChatCompletionResponse{
 		ID:      "chatcmpl-" + session.NewSessionID(),
@@ -192,7 +225,7 @@ func (s *Server) nonStreamingChatCompletion(w http.ResponseWriter, r *http.Reque
 // streamChatCompletion emite el run como SSE: rol → reasoning? → content →
 // final → [DONE]; ante tool calls, persiste la pausa y emite
 // tool_calls → final(tool_calls) → [DONE].
-func (s *Server) streamChatCompletion(w http.ResponseWriter, r *http.Request, run *service.PreparedRun) {
+func (s *Server) streamChatCompletion(w http.ResponseWriter, r *http.Request, run *service.PreparedRun, convID string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		s.writeError(w, http.StatusInternalServerError, "server_error", "streaming not supported by the server")
@@ -261,6 +294,7 @@ func (s *Server) streamChatCompletion(w http.ResponseWriter, r *http.Request, ru
 		_ = s.writeDone(w, flusher)
 		return
 	}
+	s.recordAssistantTurn(r, run, convID, content.String())
 	_ = s.writeChunk(w, flusher, finalChunk(model, chunkID, "stop"))
 	_ = s.writeDone(w, flusher)
 }

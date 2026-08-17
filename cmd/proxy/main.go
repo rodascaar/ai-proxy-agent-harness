@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"ai-proxy-agent-harness/internal/adapters/conversationstore"
 	"ai-proxy-agent-harness/internal/adapters/httpapi"
 	"ai-proxy-agent-harness/internal/adapters/router"
 	"ai-proxy-agent-harness/internal/adapters/sessionstore/md"
@@ -39,6 +40,13 @@ func main() {
 		service.WithTemperature(cfg.Temperature),
 	)
 	handler := httpapi.New(svc, cfg, r, logger)
+
+	conversations, err := conversationstore.New(cfg.ConversationsDir, logger)
+	if err != nil {
+		logger.Error("initializing conversation store", "err", err)
+		os.Exit(1)
+	}
+	handler.SetConversationStore(conversations)
 
 	if cfg.WarmupOnStart {
 		warmup(r, cfg, logger)

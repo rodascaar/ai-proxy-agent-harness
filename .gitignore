@@ -8,6 +8,9 @@
 # Sesiones del proxy
 /.sessions/
 
+# Historial de conversaciones
+/conversations/
+
 # Tooling
 *.test
 *.out

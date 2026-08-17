@@ -1,17 +1,40 @@
 "use strict";
 
+// ---------------------------------------------------------------------------
+// Referencias del DOM
+// ---------------------------------------------------------------------------
+
 const messagesEl = document.getElementById("messages");
 const composer = document.getElementById("composer");
 const inputEl = document.getElementById("input");
 const sendBtn = document.getElementById("send");
+const attachBtn = document.getElementById("attach");
+const fileInput = document.getElementById("file-input");
+const attachmentsEl = document.getElementById("attachments");
 const statusDot = document.getElementById("status-dot");
 const statusText = document.getElementById("status-text");
 const configForm = document.getElementById("config-form");
 const keyBadge = document.getElementById("key-badge");
 const saveNote = document.getElementById("save-note");
+const convListEl = document.getElementById("conv-list");
+const sidebarEmptyEl = document.getElementById("sidebar-empty");
+const sidebar = document.getElementById("sidebar");
+const sidebarToggle = document.getElementById("sidebar-toggle");
+const sidebarOverlay = document.getElementById("sidebar-overlay");
+const configPanel = document.getElementById("config-panel");
+const configToggle = document.getElementById("config-toggle");
+const configOverlay = document.getElementById("config-overlay");
+const app = document.querySelector(".app");
 
+const WIDE_QUERY = "(min-width: 1100px)";
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+// Estado global del chat
 let history = [];
 let busy = false;
+let activeConvId = null;
+let conversations = [];
+let attachments = [];
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -46,6 +69,28 @@ function markdownLite(text) {
   return out;
 }
 
+// contentToHTML renderiza un content de mensaje, que puede ser un string
+// (texto plano) o un arreglo de partes multimodal (texto + image_url).
+function contentToHTML(content) {
+  if (typeof content === "string") return markdownLite(content);
+  if (Array.isArray(content)) {
+    const images = [];
+    let text = "";
+    for (const part of content) {
+      if (!part || typeof part !== "object") continue;
+      if (part.type === "text") {
+        text += part.text || "";
+      } else if (part.type === "image_url" && part.image_url && part.image_url.url) {
+        images.push('<img class="attachment-img" src="' + escapeHtml(part.image_url.url) + '" alt="imagen adjunta" loading="lazy" />');
+      }
+    }
+    const imagesHTML = images.join("");
+    const textHTML = text ? markdownLite(text) : "";
+    return (imagesHTML ? '<div class="attachments-row">' + imagesHTML + "</div>" : "") + textHTML;
+  }
+  return "";
+}
+
 function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
@@ -53,6 +98,37 @@ function scrollToBottom() {
 function setStatus(ok, text) {
   statusDot.className = "dot " + (ok ? "ok" : "err");
   statusText.textContent = text;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+function formatWhen(iso) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const diff = now - date;
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "ahora";
+  if (minutes < 60) return minutes + " min";
+  if (diff < 24 * 3600 * 1000) return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const days = Math.floor(diff / (24 * 3600 * 1000));
+  if (days === 1) return "ayer";
+  if (days < 7) return days + " d";
+  return date.toLocaleDateString();
+}
+
+// ellipsize recorta un texto largo por el medio para que los nombres de modelo
+// no desborden el selector; el nombre completo queda en el atributo title.
+function ellipsize(text, max) {
+  if (text.length <= max) return text;
+  const head = Math.ceil((max - 1) / 2);
+  const tail = Math.floor((max - 1) / 2);
+  return text.slice(0, head) + "…" + text.slice(text.length - tail);
 }
 
 // ---------------------------------------------------------------------------
@@ -111,9 +187,37 @@ function renderInto(el, text) {
   scrollToBottom();
 }
 
-async function sendMessage(text) {
-  history.push({ role: "user", content: text });
-  addMessage("user", markdownLite(text));
+// buildUserContent compone el content del mensaje user: string plano cuando no
+// hay adjuntos (compatibilidad), o arreglo de partes (texto + imágenes) cuando
+// los hay.
+function buildUserContent(text) {
+  if (attachments.length === 0) return text;
+  const parts = [];
+  if (text) parts.push({ type: "text", text: text });
+  for (const att of attachments) {
+    if (att.kind === "image") {
+      parts.push({ type: "image_url", image_url: { url: att.dataUrl } });
+    } else {
+      parts.push({ type: "text", text: "[Archivo: " + att.name + "]\n" + att.text });
+    }
+  }
+  return parts;
+}
+
+function clearAttachments() {
+  attachments = [];
+  attachmentsEl.hidden = true;
+  attachmentsEl.innerHTML = "";
+}
+
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  const content = buildUserContent(text);
+  history.push({ role: "user", content: content });
+  addMessage("user", contentToHTML(content));
+  inputEl.value = "";
+  inputEl.style.height = "auto";
+  clearAttachments();
 
   const assistant = createAssistant();
   const modelEl = document.getElementById("model-select");
@@ -122,11 +226,15 @@ async function sendMessage(text) {
   busy = true;
   sendBtn.disabled = true;
   inputEl.disabled = true;
+  attachBtn.disabled = true;
+
+  const headers = { "Content-Type": "application/json" };
+  if (activeConvId) headers["X-Conversation-ID"] = activeConvId;
 
   try {
     const res = await fetch("/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
       body: JSON.stringify({
         model: model,
         stream: true,
@@ -159,6 +267,7 @@ async function sendMessage(text) {
     if (assistant.contentText.trim() !== "") {
       history.push({ role: "assistant", content: assistant.contentText });
     }
+    refreshConversations();
   } catch (err) {
     assistant.wrap && assistant.wrap.remove();
     addMessage(
@@ -170,6 +279,7 @@ async function sendMessage(text) {
     busy = false;
     sendBtn.disabled = false;
     inputEl.disabled = false;
+    attachBtn.disabled = false;
     inputEl.focus();
   }
 }
@@ -217,6 +327,259 @@ function handleSSE(raw, assistant) {
 }
 
 // ---------------------------------------------------------------------------
+// Adjuntos
+// ---------------------------------------------------------------------------
+
+async function onFilesSelected(fileList) {
+  const files = Array.from(fileList || []);
+  for (const file of files) {
+    if (file.size > MAX_FILE_BYTES) {
+      addMessage("assistant", escapeHtml("El archivo \"" + file.name + "\" supera el límite de 20 MB."), "error");
+      continue;
+    }
+    if (file.type.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name)) {
+      attachments.push(await readImage(file));
+    } else {
+      attachments.push(await extractFile(file));
+    }
+  }
+  renderAttachments();
+  fileInput.value = "";
+}
+
+function readImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ kind: "image", name: file.name, size: file.size, dataUrl: reader.result });
+    reader.onerror = () => reject(new Error("No se pudo leer la imagen " + file.name));
+  });
+}
+
+async function extractFile(file) {
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const res = await fetch("/api/extract-file", { method: "POST", body: form });
+    const payload = await res.json();
+    if (!res.ok) {
+      const msg = (payload.error && payload.error.message) || "HTTP " + res.status;
+      return { kind: "text", name: file.name, size: file.size, text: msg, error: true };
+    }
+    if (payload.kind === "image") {
+      return { kind: "image", name: payload.name, size: payload.size, dataUrl: payload.dataUrl };
+    }
+    return { kind: "text", name: payload.name, size: payload.size, text: payload.text };
+  } catch {
+    return { kind: "text", name: file.name, size: file.size, text: "No se pudo procesar el archivo.", error: true };
+  }
+}
+
+function renderAttachments() {
+  if (attachments.length === 0) {
+    attachmentsEl.hidden = true;
+    attachmentsEl.innerHTML = "";
+    return;
+  }
+  attachmentsEl.hidden = false;
+  attachmentsEl.innerHTML = "";
+  attachments.forEach((att, index) => {
+    const chip = document.createElement("div");
+    chip.className = "att-chip" + (att.error ? " error" : "");
+
+    if (att.kind === "image") {
+      const img = document.createElement("img");
+      img.src = att.dataUrl;
+      img.alt = att.name;
+      chip.appendChild(img);
+    }
+
+    const info = document.createElement("div");
+    info.className = "att-info";
+    const name = document.createElement("span");
+    name.className = "att-name";
+    name.textContent = att.name;
+    name.title = att.name;
+    const meta = document.createElement("span");
+    meta.className = "att-size";
+    meta.textContent = att.error ? "error" : formatBytes(att.size || 0);
+    info.append(name, meta);
+
+    const remove = document.createElement("button");
+    remove.className = "att-remove";
+    remove.textContent = "×";
+    remove.title = "Quitar adjunto";
+    remove.addEventListener("click", () => {
+      attachments.splice(index, 1);
+      renderAttachments();
+    });
+
+    chip.append(info, remove);
+    attachmentsEl.appendChild(chip);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Conversaciones (historial)
+// ---------------------------------------------------------------------------
+
+async function refreshConversations() {
+  try {
+    const res = await fetch("/api/conversations");
+    if (!res.ok) return;
+    const payload = await res.json();
+    conversations = payload.conversations || [];
+    renderConversationList();
+  } catch {
+    // El listado es de conveniencia: si falla, se ignora.
+  }
+}
+
+function renderConversationList() {
+  convListEl.innerHTML = "";
+  sidebarEmptyEl.hidden = conversations.length > 0;
+  for (const conv of conversations) {
+    const li = document.createElement("li");
+    li.className = "conv-item" + (conv.id === activeConvId ? " active" : "");
+    li.dataset.id = conv.id;
+
+    const title = document.createElement("span");
+    title.className = "conv-title";
+    title.textContent = conv.title || "(sin título)";
+    title.title = conv.title;
+
+    const meta = document.createElement("span");
+    meta.className = "conv-meta";
+    meta.textContent = formatWhen(conv.updated_at) + " · " + conv.messages_count + " msg";
+
+    const del = document.createElement("button");
+    del.className = "conv-delete";
+    del.textContent = "🗑";
+    del.title = "Eliminar conversación";
+    del.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteConversation(conv.id);
+    });
+
+    li.append(title, meta, del);
+    li.addEventListener("click", () => selectConversation(conv.id));
+    li.addEventListener("dblclick", () => renameConversation(conv.id));
+    convListEl.appendChild(li);
+  }
+}
+
+function newChat() {
+  if (busy) return;
+  activeConvId = null;
+  history = [];
+  messagesEl.innerHTML = "";
+  clearAttachments();
+  renderConversationList();
+  closeDrawers();
+  inputEl.focus();
+}
+
+async function selectConversation(id) {
+  if (busy || id === activeConvId) return;
+  try {
+    const res = await fetch("/api/conversations/" + encodeURIComponent(id));
+    if (!res.ok) return;
+    const payload = await res.json();
+    const conv = payload.conversation;
+    if (!conv || !Array.isArray(conv.messages)) return;
+
+    activeConvId = conv.id;
+    history = conv.messages.map((m) => ({ role: m.role, content: m.content }));
+    messagesEl.innerHTML = "";
+    clearAttachments();
+    for (const msg of history) {
+      const role = msg.role === "user" ? "user" : "assistant";
+      addMessage(role, contentToHTML(msg.content));
+    }
+    renderConversationList();
+    closeDrawers();
+  } catch {
+    // silencioso: la UI no debe romperse si falla la carga.
+  }
+}
+
+async function deleteConversation(id) {
+  if (!confirm("¿Eliminar esta conversación?")) return;
+  try {
+    await fetch("/api/conversations/" + encodeURIComponent(id), { method: "DELETE" });
+    if (id === activeConvId) {
+      activeConvId = null;
+      history = [];
+      messagesEl.innerHTML = "";
+      clearAttachments();
+    }
+    refreshConversations();
+  } catch {
+    // silencioso
+  }
+}
+
+async function renameConversation(id) {
+  const current = (conversations.find((c) => c.id === id) || {}).title || "";
+  const title = prompt("Nuevo título:", current);
+  if (title === null) return;
+  const trimmed = title.trim();
+  if (trimmed === "") return;
+  try {
+    await fetch("/api/conversations/" + encodeURIComponent(id), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: trimmed }),
+    });
+    refreshConversations();
+  } catch {
+    // silencioso
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Drawers (sidebar y configuración) + responsive
+// ---------------------------------------------------------------------------
+
+function closeDrawers() {
+  sidebar.classList.remove("open");
+  configPanel.classList.remove("open");
+  sidebarOverlay.hidden = true;
+  configOverlay.hidden = true;
+  sidebarToggle.setAttribute("aria-expanded", "false");
+  configToggle.setAttribute("aria-expanded", "false");
+}
+
+function toggleSidebar() {
+  if (window.matchMedia(WIDE_QUERY).matches) {
+    app.classList.toggle("no-sidebar");
+    return;
+  }
+  const open = sidebar.classList.toggle("open");
+  sidebarOverlay.hidden = !open;
+  sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function toggleConfig() {
+  if (window.matchMedia(WIDE_QUERY).matches) {
+    app.classList.toggle("no-config");
+    return;
+  }
+  const open = configPanel.classList.toggle("open");
+  configOverlay.hidden = !open;
+  configToggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+// Al pasar de narrow (drawer abierto) a wide, se limpian los estados de drawer.
+window.addEventListener("resize", () => {
+  if (window.matchMedia(WIDE_QUERY).matches) {
+    sidebar.classList.remove("open");
+    configPanel.classList.remove("open");
+    sidebarOverlay.hidden = true;
+    configOverlay.hidden = true;
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Modelos (selector dinámico)
 // ---------------------------------------------------------------------------
 
@@ -247,7 +610,8 @@ async function refreshModels() {
     for (const id of models) {
       const opt = document.createElement("option");
       opt.value = id;
-      opt.textContent = id;
+      opt.textContent = ellipsize(id, 48);
+      opt.title = id;
       select.appendChild(opt);
     }
     // Preselecciona el default; en un refresh manual conserva la selección.
@@ -397,11 +761,8 @@ async function detectModels(prefix) {
 
 composer.addEventListener("submit", (event) => {
   event.preventDefault();
-  const text = inputEl.value.trim();
-  if (text === "" || busy) return;
-  inputEl.value = "";
-  inputEl.style.height = "auto";
-  sendMessage(text);
+  if (busy) return;
+  sendMessage();
 });
 
 inputEl.addEventListener("keydown", (event) => {
@@ -416,6 +777,15 @@ inputEl.addEventListener("input", () => {
   inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + "px";
 });
 
+attachBtn.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => onFilesSelected(fileInput.files));
+
+document.getElementById("new-chat").addEventListener("click", newChat);
+sidebarToggle.addEventListener("click", toggleSidebar);
+configToggle.addEventListener("click", toggleConfig);
+sidebarOverlay.addEventListener("click", closeDrawers);
+configOverlay.addEventListener("click", closeDrawers);
+
 configForm.addEventListener("submit", saveConfig);
 
 const refreshBtn = document.getElementById("refresh-models");
@@ -427,4 +797,6 @@ document.querySelectorAll(".detect-models").forEach((btn) => {
   btn.addEventListener("click", () => detectModels(btn.dataset.upstream));
 });
 
+// Arranque
 loadConfig();
+refreshConversations();

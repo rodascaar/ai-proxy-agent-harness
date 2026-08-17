@@ -10,6 +10,7 @@
   --reasoning: #3a4150;
   --error: #ff6b6b;
   --ok: #4cd07d;
+  --topbar-h: 53px;
 }
 
 * { box-sizing: border-box; }
@@ -17,50 +18,201 @@
 html, body {
   margin: 0;
   height: 100%;
+  overflow-x: hidden;
   background: var(--bg);
   color: var(--text);
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------------------------------------------------------------------------
+ * Barra superior
+ * ------------------------------------------------------------------------- */
+
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
+  gap: 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+  flex: 0 0 auto;
 }
 
-.topbar h1 { margin: 0; font-size: 18px; font-weight: 600; }
+.topbar-left, .topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.topbar h1 { margin: 0; font-size: 18px; font-weight: 600; white-space: nowrap; }
 .topbar h1 span { color: var(--accent); font-weight: 400; }
 
-.status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; white-space: nowrap; min-width: 0; }
+.status #status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
 .dot.ok { background: var(--ok); }
 .dot.err { background: var(--error); }
 
-.layout {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  height: calc(100% - 52px);
+.icon-btn {
+  flex: 0 0 auto;
+  padding: 0 11px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  white-space: nowrap;
 }
+.icon-btn:hover { border-color: var(--accent); }
+.icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------------------
+ * Layout principal (desktop: 3 columnas)
+ * ------------------------------------------------------------------------- */
+
+.app {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 240px 1fr 320px;
+}
+
+.sidebar, .chat, .config { min-width: 0; }
+
+/* Colapsos manuales del desktop */
+@media (min-width: 1100px) {
+  .app.no-sidebar { grid-template-columns: 1fr 320px; }
+  .app.no-config { grid-template-columns: 240px 1fr; }
+  .app.no-sidebar.no-config { grid-template-columns: 1fr; }
+}
+
+/* ---------------------------------------------------------------------------
+ * Sidebar (historial de conversaciones)
+ * ------------------------------------------------------------------------- */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.sidebar-head {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-head h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.new-chat-btn {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--accent-2);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.new-chat-btn:hover { border-color: var(--accent); }
+
+.conv-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.conv-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 0;
+}
+.conv-item:hover { background: var(--panel-2); }
+.conv-item.active { background: var(--panel-2); border: 1px solid var(--accent); }
+
+.conv-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conv-meta {
+  flex-basis: 100%;
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conv-delete {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+  line-height: 1;
+}
+.conv-delete:hover { color: var(--error); background: var(--panel-2); }
+
+.sidebar-hint { padding: 0 12px 12px; }
+
+/* ---------------------------------------------------------------------------
+ * Chat
+ * ------------------------------------------------------------------------- */
 
 .chat {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
 }
 
 .messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-.msg { max-width: 82%; }
+.msg { max-width: min(82%, 760px); min-width: 0; }
 .msg.user { align-self: flex-end; }
 .msg.assistant { align-self: flex-start; }
 
@@ -70,7 +222,9 @@ html, body {
   background: var(--panel-2);
   border: 1px solid var(--border);
   white-space: pre-wrap;
-  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
 }
 
 .msg.user .bubble { background: var(--accent-2); border-color: transparent; }
@@ -103,6 +257,7 @@ html, body {
   background: #0b0d12;
   border-radius: 8px;
   overflow-x: auto;
+  max-width: 100%;
 }
 .msg code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 .msg .bubble code { background: #0b0d12; padding: 1px 5px; border-radius: 4px; }
@@ -114,16 +269,42 @@ html, body {
 }
 .msg.error .bubble { border-color: var(--error); color: var(--error); }
 
+/* Imágenes en mensajes del usuario */
+.attachments-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.attachments-row .attachment-img {
+  max-width: min(260px, 100%);
+  max-height: 260px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+/* ---------------------------------------------------------------------------
+ * Composer (entrada + adjuntos)
+ * ------------------------------------------------------------------------- */
+
 .composer {
   display: flex;
-  gap: 10px;
-  padding: 14px 20px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 20px 14px;
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
 
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 .composer textarea {
   flex: 1;
+  min-width: 0;
   resize: none;
   padding: 10px 12px;
   border-radius: 10px;
@@ -135,7 +316,16 @@ html, body {
 }
 .composer textarea:focus { outline: none; border-color: var(--accent); }
 
-.composer button {
+.composer .attach-btn {
+  flex: 0 0 auto;
+  height: 38px;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 13px;
+}
+
+.composer #send {
+  flex: 0 0 auto;
   padding: 10px 18px;
   border: none;
   border-radius: 10px;
@@ -144,14 +334,84 @@ html, body {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
 }
-.composer button:disabled { opacity: 0.5; cursor: not-allowed; }
+.composer #send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.composer-note {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.att-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  max-width: 100%;
+}
+.att-chip.error { border-color: var(--error); }
+
+.att-chip img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+
+.att-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.att-name {
+  font-size: 12.5px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.att-size {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.att-remove {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.att-remove:hover { color: var(--error); }
+
+/* ---------------------------------------------------------------------------
+ * Panel de configuración
+ * ------------------------------------------------------------------------- */
 
 .config {
   border-left: 1px solid var(--border);
   background: var(--panel);
   padding: 18px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 .config h2 { margin: 0 0 4px; font-size: 15px; }
 .config .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 16px; }
@@ -161,6 +421,7 @@ html, body {
 .config label input {
   display: block;
   width: 100%;
+  min-width: 0;
   margin-top: 4px;
   padding: 8px 10px;
   border-radius: 8px;
@@ -168,12 +429,14 @@ html, body {
   background: var(--panel-2);
   color: var(--text);
   font: inherit;
+  text-overflow: ellipsis;
 }
 .config label input:focus { outline: none; border-color: var(--accent); }
 
 .config label select {
   display: block;
   width: 100%;
+  min-width: 0;
   margin-top: 4px;
   padding: 8px 10px;
   border-radius: 8px;
@@ -184,9 +447,13 @@ html, body {
 }
 .config label select:focus { outline: none; border-color: var(--accent); }
 
+/* Botones de fila: nunca se deforman ni se encogen */
 .config .select-row { display: flex; gap: 6px; }
 .config .select-row select { flex: 1; margin-top: 4px; }
 .config .select-row button {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -202,6 +469,9 @@ html, body {
 .config .url-row { display: flex; gap: 6px; }
 .config .url-row input { flex: 1; }
 .config .url-row button {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -210,7 +480,6 @@ html, body {
   font: inherit;
   font-size: 13px;
   cursor: pointer;
-  white-space: nowrap;
 }
 .config .url-row button:hover { border-color: var(--accent); }
 .config .url-row button:disabled { opacity: 0.6; cursor: wait; }
@@ -237,6 +506,7 @@ html, body {
   font-size: 12px;
   color: var(--muted);
   padding: 0 6px;
+  overflow-wrap: anywhere;
 }
 .config fieldset.upstream label { margin-bottom: 10px; }
 .config fieldset.upstream label:last-child { margin-bottom: 0; }
@@ -269,11 +539,45 @@ html, body {
   font-size: 13px;
   background: var(--panel-2);
   border: 1px solid var(--border);
+  overflow-wrap: anywhere;
 }
 .save-note.ok { border-color: var(--ok); color: var(--ok); }
 .save-note.err { border-color: var(--error); color: var(--error); }
 
+/* ---------------------------------------------------------------------------
+ * Responsive
+ * ------------------------------------------------------------------------- */
+
+/* Tablet y móvil: sidebar y config como drawers deslizantes */
+@media (max-width: 1099px) {
+  .app { grid-template-columns: 1fr; }
+
+  .sidebar, .config {
+    position: fixed;
+    top: var(--topbar-h);
+    bottom: 0;
+    z-index: 40;
+    width: 300px;
+    max-width: 85%;
+    transition: transform 0.18s ease;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+  }
+  .sidebar { left: 0; transform: translateX(-100%); border-right: 1px solid var(--border); }
+  .sidebar.open { transform: translateX(0); }
+  .config { right: 0; transform: translateX(100%); border-left: 1px solid var(--border); }
+  .config.open { transform: translateX(0); }
+}
+
+.overlay {
+  position: fixed;
+  inset: var(--topbar-h) 0 0 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 30;
+}
+
 @media (max-width: 720px) {
-  .layout { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-  .config { border-left: none; border-top: 1px solid var(--border); max-height: 45%; }
+  .messages { padding: 14px 12px; }
+  .msg { max-width: 95%; }
+  .composer { padding: 8px 12px 12px; }
+  .topbar { padding: 8px 10px; }
 }

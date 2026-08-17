@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"ai-proxy-agent-harness/internal/core/debate"
@@ -149,6 +150,7 @@ func (e *Engine) leafPhaseInputs(leaf *task.Node) (string, string, error) {
 		prompts.PlaceholderGoal:         e.goalCtx.TurnInstruction,
 		prompts.PlaceholderPriorContext: e.priorContextOrDefault(),
 		prompts.PlaceholderContext:      e.resultsContext("(ninguno todavía)"),
+		prompts.PlaceholderTools:        e.toolsSummary(),
 		prompts.PlaceholderTask:         leaf.Description,
 	})
 	if err != nil {
@@ -167,6 +169,7 @@ func (e *Engine) synthesisPhaseInputs() (string, string, error) {
 		prompts.PlaceholderGoal:         e.goalCtx.TurnInstruction,
 		prompts.PlaceholderPriorContext: e.priorContextOrDefault(),
 		prompts.PlaceholderContext:      e.resultsContext("(sin resultados)"),
+		prompts.PlaceholderTools:        e.toolsSummary(),
 	})
 	if err != nil {
 		return "", "", err
@@ -226,6 +229,7 @@ func (e *Engine) executeFrom(ctx context.Context, startIndex int, onEvent Handle
 		if result.paused {
 			return e.pausePhase(onEvent, PhaseLeaf, index, result)
 		}
+		result.text = e.correctNeedsToolMarker(ctx, system, userText, result.text, onEvent)
 		e.recordLeafResult(leaf, e.debateResult(ctx, leaf.Description, result.text, onEvent))
 	}
 	return false, nil
@@ -275,6 +279,7 @@ func (e *Engine) resumePhase(ctx context.Context, toolOutputs map[string]string,
 	if phase != PhaseLeaf {
 		return false, nil // síntesis completada
 	}
+	result.text = e.correctNeedsToolMarker(ctx, system, userText, result.text, onEvent)
 	e.recordLeafResult(e.leaves[index], e.debateResult(ctx, e.leaves[index].Description, result.text, onEvent))
 	return e.executeFrom(ctx, index+1, onEvent)
 }
@@ -305,10 +310,89 @@ func (e *Engine) debateResult(ctx context.Context, task, text string, onEvent Ha
 }
 
 // recordLeafResult guarda el resultado de una hoja y lo agrega al contexto
-// acumulado de las tareas posteriores.
+// acumulado de las tareas posteriores. El resultado se sanitiza contra el
+// marcador [[NECESITA_HERRAMIENTA]] cuando no hay tools (defensa en
+// profundidad; la corrección principal ocurre en correctNeedsToolMarker).
 func (e *Engine) recordLeafResult(leaf *task.Node, resultText string) {
 	leaf.Result = resultText
-	e.results = append(e.results, fmt.Sprintf("- %s:\n%s", leaf.Description, resultText))
+	e.results = append(e.results, fmt.Sprintf("- %s:\n%s", leaf.Description, e.sanitizeResultForContext(resultText)))
+}
+
+// sanitizeResultForContext reemplaza marcadores [[NECESITA_HERRAMIENTA]] por
+// una nota de pendiente honesta solo cuando NO hay tools reales: si las hay,
+// la síntesis mantiene el protocolo <pendientes_marcados> para resolverlas.
+func (e *Engine) sanitizeResultForContext(text string) string {
+	if len(e.opts.Tools) > 0 {
+		return text
+	}
+	return sanitizeNeedsToolMarker(text)
+}
+
+// needsToolMarkerRegex reconoce el marcador [[NECESITA_HERRAMIENTA: descripción]]
+// que el modelo usa para reportar una subtarea que requiere una acción externa.
+var needsToolMarkerRegex = regexp.MustCompile(`\[\[\s*NECESITA_HERRAMIENTA\s*:?\s*([^\]]*)\]\]`)
+
+// extractNeedsToolDescription devuelve la descripción del primer marcador
+// [[NECESITA_HERRAMIENTA: ...]] presente en el texto, o "" si no hay ninguno.
+func extractNeedsToolDescription(text string) string {
+	m := needsToolMarkerRegex.FindStringSubmatch(text)
+	if m == nil {
+		return ""
+	}
+	return strings.TrimSpace(m[1])
+}
+
+// needsToolFallback es la nota honesta que reemplaza un resultado de hoja que
+// quedó dependiendo de una herramienta no disponible: nunca fabrica contenido.
+func needsToolFallback(description string) string {
+	if description == "" {
+		description = "una acción externa no disponible"
+	}
+	return "[Pendiente: esta subtarea requiere " + description + ", pero no hay una herramienta disponible para realizarla.]"
+}
+
+// sanitizeNeedsToolMarker reemplaza cualquier marcador [[NECESITA_HERRAMIENTA]]
+// remanente en un texto por su nota de pendiente honesta.
+func sanitizeNeedsToolMarker(text string) string {
+	return needsToolMarkerRegex.ReplaceAllStringFunc(text, func(match string) string {
+		return needsToolFallback(extractNeedsToolDescription(match))
+	})
+}
+
+// correctNeedsToolMarker corrige el resultado de una hoja si el modelo emitió
+// el marcador [[NECESITA_HERRAMIENTA: ...]] sin que el caller tenga
+// herramientas: es una desviación del modelo (alucinación) y no debe llegar a
+// la síntesis como si fuera un resultado real. Reintenta la hoja UNA vez con
+// una corrección explícita para que responda directamente; si el marcador
+// persiste tras el reintento, devuelve una nota honesta de pendiente.
+func (e *Engine) correctNeedsToolMarker(ctx context.Context, system, userText, resultText string, onEvent Handler) string {
+	description := extractNeedsToolDescription(resultText)
+	if description == "" || len(e.opts.Tools) > 0 {
+		return resultText // sin marcador, o protocolo legítimo con tools del caller
+	}
+	if err := emitReasoning(onEvent, "\n\n[No hay herramientas disponibles y el modelo marcó la tarea como dependiente de una herramienta. Reintento la hoja pidiendo respuesta directa.]\n\n"); err != nil {
+		return needsToolFallback(description)
+	}
+
+	correction := openai.Message{
+		Role: openai.RoleUser,
+		Content: messageContent("CORRECCIÓN: no tienes herramientas disponibles en esta llamada. Responde la tarea " +
+			"atómica directamente con tu conocimiento, sin simular acciones externas ni usar el formato " +
+			"[[NECESITA_HERRAMIENTA]]. Si realmente no puedes responderla sin una herramienta, dilo en una línea breve y honesta."),
+	}
+	retry, err := e.runPhase(ctx, system, userText, EventReasoning, []openai.Message{correction}, onEvent)
+	if err != nil {
+		return needsToolFallback(description)
+	}
+	if retry.paused {
+		// Sin tools ofrecidas el upstream no debería devolver tool_calls nativas;
+		// si lo hace, respetamos el protocolo conservando el resultado original.
+		return resultText
+	}
+	if extractNeedsToolDescription(retry.text) != "" {
+		return needsToolFallback(description)
+	}
+	return retry.text
 }
 
 // synthesizeFinal ejecuta la Fase 3: genera la respuesta final visible con

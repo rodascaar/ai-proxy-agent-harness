@@ -27,6 +27,19 @@ Cada turno del usuario pasa por tres fases, orquestadas por el motor en
 3. **Síntesis final** — con todos los resultados resueltos, se genera la
    respuesta final (el proceso interno se expone como `reasoning_content`).
 
+### Robustez contra alucinaciones
+
+El proxy no depende de que el modelo sea disciplinado para dar resultados
+correctos. Cada fase informa al modelo **si tiene herramientas reales**
+(`<tools_disponibles>`): si no hay ninguna, se le prohíbe usar el marcador
+`[[NECESITA_HERRAMIENTA: …]]` y se le exige responder directo. Además, si un
+modelo emite el marcador sin herramientas disponibles, el motor **reintenta la
+tarea una vez** pidiendo respuesta directa y, si persiste, reemplaza el
+resultado por una nota honesta de pendiente en vez de dejar que contenido
+inventado llegue a la respuesta final. Los prompts además neutralizan el
+anclaje a ejemplos y prohíben simular acciones externas (código que "haría" la
+acción, datos falsos de archivos o comandos).
+
 ### Sesiones y pausa/reanudación
 
 Como una tarea atómica o la síntesis pueden requerir `tool_calls`, el proxy
@@ -76,6 +89,8 @@ El proxy queda disponible en `http://127.0.0.1:8000`, exponiendo:
 - `/` — Web UI embebida (chat + configuración)
 - `GET/PUT /api/config` — ver y editar la configuración (se guarda en `.env`)
 - `POST /api/detect-models` — detecta los modelos reales de un endpoint (usado por el botón "Detectar" de la UI)
+- `GET /api/conversations` y `GET/PATCH/DELETE /api/conversations/{id}` — historial de conversaciones (ledger JSON)
+- `POST /api/extract-file` — extrae texto de un PDF/DOCX/txt subido (o devuelve la imagen como data URL) para adjuntar al chat
 
 Apunta cualquier cliente compatible (SDK oficial, agentes de código, etc.) a
 esta URL como `base_url`. Ejemplo con el SDK de OpenAI apuntando a Ollama:
@@ -104,6 +119,31 @@ Cada bloque tiene un botón **"Detectar"**: escribe la URL de tu servidor
 (sea LM Studio, Ollama o llama.cpp), clickeá Detectar y la UI consulta el
 `/v1/models` real de ese servidor y rellena el campo de modelos solo. Así no
 hace falta saber (ni teclear) los nombres exactos.
+
+### Historial de conversaciones
+
+La UI guarda un **historial de conversaciones en el servidor** (ledger JSON en
+`CONVERSATIONS_DIR`, por defecto `conversations/`). El sidebar permite crear un
+**nuevo chat**, **listar**, **seleccionar**, **renombrar** (doble click) y
+**eliminar** conversaciones. Cada conversación se identifica con un id
+(la UI usa `crypto.randomUUID()`) que se envía en el header `X-Conversation-ID`
+de cada request; el proxy registra el turno user al inicio y el assistant al
+final, y el primer mensaje da título a la conversación. Si no se envía el
+header, el comportamiento es idéntico al protocolo OpenAI.
+
+### Subida de archivos
+
+El botón **"+"** del composer permite adjuntar archivos:
+
+- **Imágenes** (PNG/JPG/GIF/WebP/BMP) → se envían al modelo como partes
+  `image_url` (el proxy ya las reinyecta a todas las fases). El modelo debe
+  soportar imágenes.
+- **PDF, DOCX y texto/código** → se extrae su contenido con
+  `POST /api/extract-file` (PDF vía `github.com/ledongthuc/pdf`, DOCX vía
+  stdlib zip+xml) y se adjunta como texto al mensaje.
+
+Los adjuntos aparecen como chips removibles antes de enviar. Tamaño máximo
+configurable con `MAX_FILE_BYTES` (default 20 MB).
 
 ## Modelo del upstream (detección dinámica)
 
@@ -169,6 +209,8 @@ completas en [`.env.example`](.env.example):
 | `SESSION_TTL_SECONDS` | `30m` | TTL de las sesiones persistidas |
 | `MAX_SESSIONS` | `200` | Límite de sesiones simultáneas |
 | `SESSIONS_DIR` | `.sessions` | Directorio de notas de sesión (markdown) |
+| `CONVERSATIONS_DIR` | `conversations` | Directorio del ledger JSON de conversaciones (historial del chat) |
+| `MAX_FILE_BYTES` | `20971520` | Tamaño máximo (bytes) de archivos subidos a `/api/extract-file` |
 | `EXPOSE_REASONING_CONTENT` | `true` | Expone el razonamiento como `reasoning_content` |
 | `WARMUP_ON_START` | `false` | Verifica el upstream (`/v1/models`) al arrancar |
 | `PROXY_HOST` / `PROXY_PORT` | `127.0.0.1` / `8000` | Interfaz y puerto del proxy |

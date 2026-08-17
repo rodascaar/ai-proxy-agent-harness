@@ -8,23 +8,46 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>AI Proxy <span>harness</span></h1>
-    <div class="status">
-      <span class="dot" id="status-dot"></span>
-      <span id="status-text">conectando…</span>
+    <div class="topbar-left">
+      <button type="button" id="sidebar-toggle" class="icon-btn" aria-label="Abrir historial de chats" aria-expanded="false" title="Historial de chats">☰</button>
+      <h1>AI Proxy <span>harness</span></h1>
+    </div>
+    <div class="topbar-right">
+      <div class="status">
+        <span class="dot" id="status-dot"></span>
+        <span id="status-text">conectando…</span>
+      </div>
+      <button type="button" id="config-toggle" class="icon-btn" aria-label="Abrir configuración" aria-expanded="false" title="Configuración">⚙</button>
     </div>
   </header>
 
-  <main class="layout">
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Historial de conversaciones">
+      <div class="sidebar-head">
+        <h2>Conversaciones</h2>
+        <button type="button" id="new-chat" class="new-chat-btn">+ Nuevo chat</button>
+      </div>
+      <ul class="conv-list" id="conv-list"></ul>
+      <p class="hint sidebar-hint" id="sidebar-empty">Sin conversaciones todavía. Enviá un mensaje para comenzar una.</p>
+    </aside>
+    <div class="overlay" id="sidebar-overlay" hidden></div>
+
     <section class="chat" aria-label="Chat">
       <div class="messages" id="messages"></div>
       <form class="composer" id="composer">
-        <textarea id="input" rows="1" placeholder="Escribe tu instrucción… (Enter envía, Shift+Enter nueva línea)" autocomplete="off"></textarea>
-        <button type="submit" id="send" aria-label="Enviar">Enviar</button>
+        <div class="attachments" id="attachments" hidden></div>
+        <div class="composer-row">
+          <button type="button" id="attach" class="icon-btn attach-btn" aria-label="Adjuntar archivos" title="Adjuntar archivos (imágenes, PDF, DOCX, texto)">+</button>
+          <input type="file" id="file-input" multiple accept="image/*,.pdf,.docx,.txt,.md,.markdown,.json,.csv,.log,.yaml,.yml,.xml,.sql,.sh,.go,.py,.js,.mjs,.cjs,.ts,.jsx,.tsx,.html,.htm,.css,.java,.c,.h,.cpp,.rs,.rb,.php,.toml,.ini,.conf" hidden />
+          <textarea id="input" rows="1" placeholder="Escribe tu instrucción… (Enter envía, Shift+Enter nueva línea)" autocomplete="off"></textarea>
+          <button type="submit" id="send" aria-label="Enviar">Enviar</button>
+        </div>
+        <p class="composer-note">Podés adjuntar imágenes (si el modelo las soporta), PDF, DOCX o archivos de texto.</p>
       </form>
     </section>
 
-    <aside class="config" aria-label="Configuración">
+    <div class="overlay" id="config-overlay" hidden></div>
+    <aside class="config" id="config-panel" aria-label="Configuración">
       <h2>Configuración</h2>
       <p class="hint">Los cambios se guardan en <code>.env</code> y aplican al reiniciar el proxy. Escribí la URL de cada servidor y usá <strong>Detectar</strong> para traer sus modelos.</p>
       <form id="config-form">
@@ -109,7 +132,7 @@
         <div class="save-note" id="save-note" hidden></div>
       </form>
     </aside>
-  </main>
+  </div>
 
   <script src="/app.js"></script>
 </body>

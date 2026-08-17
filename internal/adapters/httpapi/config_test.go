@@ -124,6 +124,7 @@ func TestModelsPassthrough(t *testing.T) {
 		UpstreamModel:   "test-model",
 		RequestTimeout:  time.Minute,
 		SessionsDir:     ".sessions",
+		MaxFileBytes:    20 << 20,
 	}
 	lister := &fakeLister{models: []openai.ModelDescriptor{
 		{ID: "qwen2.5:7b", Object: openai.ObjectModel, OwnedBy: "ollama"},
